@@ -9,7 +9,6 @@ from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.session import SessionLocal
 from app.services.embeddings.interface import DummyEmbeddingExtractor
-from app.services.embeddings.insightface_extractor import InsightFaceEmbeddingExtractor
 from app.services.index.index_manager import IndexManager
 
 
@@ -32,6 +31,10 @@ def create_app() -> FastAPI:
         if settings.testing:
             extractor = DummyEmbeddingExtractor()
         else:
+            from app.services.embeddings.insightface_extractor import (
+                InsightFaceEmbeddingExtractor,
+            )
+
             extractor = InsightFaceEmbeddingExtractor(settings)
         app.state.extractor = extractor
 

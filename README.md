@@ -13,6 +13,26 @@ docker-compose up --build
 
 The API is available at `http://localhost:8000`.
 
+## Run on Windows (PowerShell)
+
+```powershell
+Set-Location -Path "C:\Users\mukha\OneDrive\Documents\GitHub\DiplomaWork"
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+docker compose up --build
+```
+
+Health check (PowerShell):
+
+```powershell
+Invoke-WebRequest http://localhost:8000/v1/health
+```
+
+Docs:
+
+```powershell
+Start-Process http://localhost:8000/docs
+```
+
 ## Backend (local)
 
 ```bash

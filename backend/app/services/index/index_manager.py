@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,8 @@ class IndexManager:
         )
         self._index_type = settings.index_type
         self._params = self.default_params_for(settings.index_type)
+        self.last_snapshot_id: str | None = None
+        self._logger = logging.getLogger(__name__)
 
     def default_params_for(self, index_type: str) -> dict[str, Any]:
         if index_type == "hnsw":
@@ -56,6 +59,13 @@ class IndexManager:
             self._index.load(snapshot.path)
             self._index_type = snapshot.index_type
             self._params = snapshot.params
+            self.last_snapshot_id = str(snapshot.id)
+            self._logger.info(
+                "Loaded index snapshot id=%s type=%s path=%s",
+                snapshot.id,
+                snapshot.index_type,
+                snapshot.path,
+            )
             return True
         return False
 
@@ -69,12 +79,13 @@ class IndexManager:
     def save_snapshot(self, db: Session) -> None:
         self._index.save(str(self.index_path))
         repo = IndexSnapshotRepo(db)
-        repo.create(
+        snapshot = repo.create(
             index_type=self._index_type,
             params=self._params,
             path=str(self.index_path),
             embeddings_count=self._index.count(),
         )
+        self.last_snapshot_id = str(snapshot.id)
 
     def rebuild(self, db: Session, index_type: str, params: dict[str, Any]) -> dict[str, Any]:
         if not params:
@@ -96,6 +107,8 @@ class IndexManager:
     def stats(self) -> dict[str, Any]:
         stats = self._index.stats()
         stats["loaded"] = self._index.count() > 0
+        stats["file_path"] = str(self.index_path)
+        stats["last_snapshot_id"] = self.last_snapshot_id
         return stats
 
     def count(self) -> int:

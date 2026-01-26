@@ -1,3 +1,5 @@
+import json
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -12,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.core.api_client import ApiClient
+from app.core.api_client import ApiClient, format_api_error
 
 
 class EnrollTab(QWidget):
@@ -58,6 +60,7 @@ class EnrollTab(QWidget):
         label = self.label_input.text().strip() or None
         try:
             response = self.api.enroll(path, label)
-            self.response_view.setPlainText(str(response))
+            pretty = json.dumps(response, indent=2)
+            self.response_view.setPlainText(pretty)
         except Exception as exc:
-            QMessageBox.critical(self, "Enroll failed", str(exc))
+            QMessageBox.critical(self, "Enroll failed", format_api_error(exc))
