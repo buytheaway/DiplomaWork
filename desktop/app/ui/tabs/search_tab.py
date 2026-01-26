@@ -1,3 +1,5 @@
+import time
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -14,7 +16,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.core.api_client import ApiClient
+from app.core.api_client import ApiClient, format_api_error
+
+
+class NumericItem(QTableWidgetItem):
+    def __init__(self, value: float | None) -> None:
+        text = f"{value:.4f}" if value is not None else ""
+        super().__init__(text)
+        self.sort_value = value if value is not None else float("-inf")
+
+    def __lt__(self, other: "QTableWidgetItem") -> bool:
+        if isinstance(other, NumericItem):
+            return self.sort_value < other.sort_value
+        return super().__lt__(other)
 
 
 class SearchTab(QWidget):
@@ -42,10 +56,14 @@ class SearchTab(QWidget):
 
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Person ID", "Label", "Score", "Distance"])
+        self.table.setSortingEnabled(True)
+
+        self.latency_label = QLabel("Latency: - ms")
 
         layout = QVBoxLayout()
         layout.addLayout(form)
         layout.addWidget(search_btn, alignment=Qt.AlignLeft)
+        layout.addWidget(self.latency_label, alignment=Qt.AlignLeft)
         layout.addWidget(self.table)
         self.setLayout(layout)
 
@@ -61,13 +79,21 @@ class SearchTab(QWidget):
             return
         k = self.k_input.value()
         try:
+            start = time.perf_counter()
             response = self.api.search(path, k)
+            latency_ms = (time.perf_counter() - start) * 1000
+            self.latency_label.setText(f"Latency: {latency_ms:.2f} ms")
             results = response.get("results", [])
+            self.table.setSortingEnabled(False)
             self.table.setRowCount(len(results))
             for row_idx, result in enumerate(results):
                 self.table.setItem(row_idx, 0, QTableWidgetItem(result.get("person_id", "")))
                 self.table.setItem(row_idx, 1, QTableWidgetItem(result.get("label") or ""))
-                self.table.setItem(row_idx, 2, QTableWidgetItem(str(result.get("score"))))
-                self.table.setItem(row_idx, 3, QTableWidgetItem(str(result.get("distance"))))
+                score = result.get("score")
+                distance = result.get("distance")
+                self.table.setItem(row_idx, 2, NumericItem(score))
+                self.table.setItem(row_idx, 3, NumericItem(distance))
+            self.table.setSortingEnabled(True)
+            self.table.sortItems(2, Qt.DescendingOrder)
         except Exception as exc:
-            QMessageBox.critical(self, "Search failed", str(exc))
+            QMessageBox.critical(self, "Search failed", format_api_error(exc))

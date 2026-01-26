@@ -102,12 +102,21 @@ class FaissIndex(VectorIndex):
         return int(self._index.ntotal)
 
     def stats(self) -> dict[str, Any]:
+        memory_bytes = int(self.count() * self.dim * 4)
+        is_trained = True
+        if self.index_type == "ivfpq":
+            try:
+                is_trained = bool(self._index.index.is_trained)
+            except Exception:
+                is_trained = False
         return {
             "index_type": self.index_type,
             "params": self.params,
             "embeddings_count": self.count(),
-            "memory_estimate": int(self.count() * self.dim * 4),
+            "memory_estimate": memory_bytes,
+            "memory_estimate_bytes": memory_bytes,
             "loaded": True,
+            "is_trained": is_trained,
         }
 
     def train(self, vectors: np.ndarray) -> None:

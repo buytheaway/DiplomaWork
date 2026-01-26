@@ -8,7 +8,11 @@ class IndexStatsResponse(BaseModel):
     params: dict[str, Any]
     embeddings_count: int
     memory_estimate: int
+    memory_estimate_bytes: int
     loaded: bool
+    is_trained: bool
+    file_path: str
+    last_snapshot_id: str | None
 
 
 class RebuildIndexRequest(BaseModel):

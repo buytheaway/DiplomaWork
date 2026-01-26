@@ -1,3 +1,6 @@
+import json
+import time
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFormLayout,
@@ -10,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.core.api_client import ApiClient
+from app.core.api_client import ApiClient, format_api_error
 
 
 class StatsTab(QWidget):
@@ -19,6 +22,9 @@ class StatsTab(QWidget):
         self.api = ApiClient()
         self.stats_view = QTextEdit()
         self.stats_view.setReadOnly(True)
+        self.last_rebuild_params: dict[str, int] | None = None
+        self.last_rebuild_label = QLabel("Last rebuild params: -")
+        self.latency_label = QLabel("Latency: - ms")
 
         self.m_input = QLineEdit("32")
         self.efc_input = QLineEdit("200")
@@ -37,7 +43,9 @@ class StatsTab(QWidget):
 
         layout = QVBoxLayout()
         layout.addWidget(refresh_btn, alignment=Qt.AlignLeft)
+        layout.addWidget(self.latency_label, alignment=Qt.AlignLeft)
         layout.addWidget(self.stats_view)
+        layout.addWidget(self.last_rebuild_label)
         layout.addWidget(QLabel("Rebuild index (HNSW)"))
         layout.addLayout(form)
         layout.addWidget(rebuild_btn, alignment=Qt.AlignLeft)
@@ -45,10 +53,13 @@ class StatsTab(QWidget):
 
     def _refresh(self) -> None:
         try:
+            start = time.perf_counter()
             stats = self.api.index_stats()
-            self.stats_view.setPlainText(str(stats))
+            latency_ms = (time.perf_counter() - start) * 1000
+            self.latency_label.setText(f"Latency: {latency_ms:.2f} ms")
+            self.stats_view.setPlainText(json.dumps(stats, indent=2))
         except Exception as exc:
-            QMessageBox.critical(self, "Stats failed", str(exc))
+            QMessageBox.critical(self, "Stats failed", format_api_error(exc))
 
     def _rebuild(self) -> None:
         try:
@@ -57,7 +68,14 @@ class StatsTab(QWidget):
                 "ef_construction": int(self.efc_input.text()),
                 "ef_search": int(self.efs_input.text()),
             }
+            start = time.perf_counter()
             stats = self.api.rebuild_index("hnsw", params)
-            self.stats_view.setPlainText(str(stats))
+            latency_ms = (time.perf_counter() - start) * 1000
+            self.latency_label.setText(f"Latency: {latency_ms:.2f} ms")
+            self.last_rebuild_params = params
+            self.last_rebuild_label.setText(
+                f"Last rebuild params: {json.dumps(self.last_rebuild_params)}"
+            )
+            self.stats_view.setPlainText(json.dumps(stats, indent=2))
         except Exception as exc:
-            QMessageBox.critical(self, "Rebuild failed", str(exc))
+            QMessageBox.critical(self, "Rebuild failed", format_api_error(exc))
