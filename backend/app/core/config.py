@@ -22,6 +22,15 @@ class Settings(BaseSettings):
 
     database_url: str = Field(..., alias="DATABASE_URL")
     model_name: str = Field("buffalo_l", alias="MODEL_NAME")
+    embedding_backend: Literal["insightface", "torch"] = Field(
+        "insightface", alias="EMBEDDING_BACKEND"
+    )
+    torch_model_path: str = Field("", alias="TORCH_MODEL_PATH")
+    torch_model_arch: str = Field("ir18", alias="TORCH_MODEL_ARCH")
+    torch_input_size: int = Field(112, alias="TORCH_INPUT_SIZE")
+    torch_device: str = Field("cpu", alias="TORCH_DEVICE")
+    torch_use_fp16: bool = Field(False, alias="TORCH_USE_FP16")
+    torch_norm_embeddings: bool = Field(True, alias="TORCH_NORM_EMBEDDINGS")
 
     index_type: Literal["flat", "hnsw", "ivfpq"] = Field("hnsw", alias="INDEX_TYPE")
     index_path: str = Field(

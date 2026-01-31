@@ -30,6 +30,10 @@ def create_app() -> FastAPI:
     def on_startup() -> None:
         if settings.testing:
             extractor = DummyEmbeddingExtractor()
+        elif settings.embedding_backend == "torch":
+            from app.services.embeddings.torch_extractor import TorchEmbeddingExtractor
+
+            extractor = TorchEmbeddingExtractor(settings)
         else:
             from app.services.embeddings.insightface_extractor import (
                 InsightFaceEmbeddingExtractor,

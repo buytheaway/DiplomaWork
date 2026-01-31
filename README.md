@@ -74,6 +74,34 @@ python scripts/build_index.py --index-type hnsw
 python scripts/benchmark_search.py --dataset /path/to/dataset --k 5 --samples 100
 ```
 
+## Training (from scratch)
+
+This repo includes a minimal PyTorch training pipeline under `training/` to train a custom
+face embedding model with ArcFace loss. Training does **not** store images in the backend.
+
+Default plan for your setup:
+- Train on CASIA-WebFace (train) and use LFW for validation only
+- `batch_size=64`, `epochs=20`
+
+Run training (PowerShell):
+```powershell
+python .\training\train.py --config .\training\config.yaml
+```
+
+Evaluate weights:
+```powershell
+python .\training\eval.py --config .\training\config.yaml --weights .\training\outputs\checkpoint_epoch_020.pth
+```
+
+Use trained weights in backend (set in `.env`):
+```
+EMBEDDING_BACKEND=torch
+TORCH_MODEL_PATH=training/outputs/checkpoint_epoch_020.pth
+TORCH_MODEL_ARCH=ir50
+TORCH_DEVICE=cuda
+TORCH_USE_FP16=true
+```
+
 ## API endpoints
 
 - `GET /v1/health`
