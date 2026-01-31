@@ -1,0 +1,35 @@
+seed: 42
+device: "cuda"
+amp: true
+
+data:
+  train_dir: "datasets/casia-webface"
+  val_dir: "datasets/lfw"
+  pairs_file: ""  # optional, LFW pairs file for verification evaluation
+  num_workers: 4
+  input_size: 112
+
+model:
+  arch: "ir50"
+  embedding_dim: 512
+  normalize: true
+
+loss:
+  margin: 0.5
+  scale: 64.0
+
+train:
+  batch_size: 64
+  epochs: 20
+  log_interval: 100
+  save_every: 1
+  output_dir: "training/outputs"
+
+optimizer:
+  lr: 0.1
+  weight_decay: 0.0005
+  momentum: 0.9
+
+scheduler:
+  step_size: 10
+  gamma: 0.1

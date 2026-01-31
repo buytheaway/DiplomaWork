@@ -1,0 +1,98 @@
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from app.core.config import Settings
+from app.services.embeddings.interface import (
+    EmbeddingExtractor,
+    MultipleFacesDetectedError,
+    NoFaceDetectedError,
+)
+from app.services.embeddings.torch_model import ModelConfig, build_model, forward_with_normalization
+from app.services.face.align import AlignmentError, align_with_landmarks
+from app.services.face.detector import InsightFaceDetector, decode_image
+from app.services.face.quality import validate_face_quality
+
+
+class TorchEmbeddingExtractor(EmbeddingExtractor):
+    def __init__(self, settings: Settings) -> None:
+        import torch
+
+        self.model_name = f"torch_{settings.torch_model_arch}"
+        self.dim = 512
+        self.strict_single_face = settings.strict_single_face
+        self.min_det_score = settings.min_det_score
+        self.allow_center_crop = settings.allow_center_crop
+        self.input_size = settings.torch_input_size
+        self.use_fp16 = settings.torch_use_fp16
+        self.norm_embeddings = settings.torch_norm_embeddings
+        self.device = torch.device(settings.torch_device)
+
+        model_config = ModelConfig(
+            arch=settings.torch_model_arch,
+            embedding_dim=self.dim,
+            norm_embeddings=settings.torch_norm_embeddings,
+        )
+        self.model = build_model(model_config).to(self.device).eval()
+
+        if not settings.torch_model_path:
+            raise ValueError("TORCH_MODEL_PATH is required for torch embedding backend")
+
+        weights_path = Path(settings.torch_model_path)
+        if not weights_path.exists():
+            raise FileNotFoundError(f"Torch model not found: {weights_path}")
+
+        state = torch.load(str(weights_path), map_location=self.device)
+        state_dict = state.get("state_dict", state)
+        self.model.load_state_dict(state_dict, strict=False)
+
+        self.detector = InsightFaceDetector(model_name=settings.model_name)
+        logging.getLogger(__name__).info("Torch embedding model loaded: %s", weights_path)
+
+    def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
+        import torch
+
+        image = decode_image(image_bytes)
+        faces = self.detector.detect(image)
+        if not faces:
+            raise NoFaceDetectedError("No face detected")
+
+        if self.strict_single_face and len(faces) != 1:
+            raise MultipleFacesDetectedError("Multiple faces detected")
+
+        face = max(faces, key=lambda f: f.det_score)
+        validate_face_quality(face, self.min_det_score)
+
+        try:
+            aligned = align_with_landmarks(image, face.kps, self.allow_center_crop)
+        except AlignmentError as exc:
+            raise NoFaceDetectedError(str(exc)) from exc
+
+        if aligned.shape[0] != self.input_size or aligned.shape[1] != self.input_size:
+            aligned = cv2.resize(aligned, (self.input_size, self.input_size))
+
+        rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB)
+        tensor = torch.from_numpy(rgb).float() / 255.0
+        tensor = (tensor - 0.5) / 0.5
+        tensor = tensor.permute(2, 0, 1).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            if self.use_fp16:
+                with torch.cuda.amp.autocast():
+                    embeddings = forward_with_normalization(
+                        self.model, tensor, normalize=self.norm_embeddings
+                    )
+            else:
+                embeddings = forward_with_normalization(
+                    self.model, tensor, normalize=self.norm_embeddings
+                )
+
+        vector = embeddings.squeeze(0).float().cpu().numpy().astype(np.float32)
+        if vector.shape[0] != self.dim:
+            raise NoFaceDetectedError("Unexpected embedding dimension")
+
+        return vector
