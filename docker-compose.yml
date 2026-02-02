@@ -24,5 +24,6 @@ services:
       - db
     volumes:
       - ./backend/data:/app/data
+      - ./training/outputs:/app/training/outputs:ro
 volumes:
   db_data:

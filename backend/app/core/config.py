@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     ivfpq_nbits: int = Field(8, alias="IVFPQ_NBITS")
 
     strict_single_face: bool = Field(True, alias="STRICT_SINGLE_FACE")
+    detection_backend: Literal["insightface", "opencv"] = Field(
+        "insightface", alias="DETECTION_BACKEND"
+    )
     allow_center_crop: bool = Field(False, alias="ALLOW_CENTER_CROP")
     min_det_score: float = Field(0.5, alias="MIN_DET_SCORE")
 

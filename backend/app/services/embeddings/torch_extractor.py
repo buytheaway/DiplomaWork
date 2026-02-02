@@ -14,7 +14,7 @@ from app.services.embeddings.interface import (
 )
 from app.services.embeddings.torch_model import ModelConfig, build_model, forward_with_normalization
 from app.services.face.align import AlignmentError, align_with_landmarks
-from app.services.face.detector import InsightFaceDetector, decode_image
+from app.services.face.detector import OpenCVHaarDetector, InsightFaceDetector, decode_image
 from app.services.face.quality import validate_face_quality
 
 
@@ -50,7 +50,10 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         state_dict = state.get("state_dict", state)
         self.model.load_state_dict(state_dict, strict=False)
 
-        self.detector = InsightFaceDetector(model_name=settings.model_name)
+        if settings.detection_backend == "opencv":
+            self.detector = OpenCVHaarDetector()
+        else:
+            self.detector = InsightFaceDetector(model_name=settings.model_name)
         logging.getLogger(__name__).info("Torch embedding model loaded: %s", weights_path)
 
     def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
@@ -68,7 +71,9 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         validate_face_quality(face, self.min_det_score)
 
         try:
-            aligned = align_with_landmarks(image, face.kps, self.allow_center_crop)
+            aligned = align_with_landmarks(
+                image, face.kps, self.allow_center_crop, bbox=face.bbox
+            )
         except AlignmentError as exc:
             raise NoFaceDetectedError(str(exc)) from exc
 

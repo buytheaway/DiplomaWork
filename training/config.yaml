@@ -3,8 +3,8 @@ device: "cuda"
 amp: true
 
 data:
-  train_dir: "datasets/casia-webface"
-  val_dir: "datasets/lfw"
+  train_dir: "datasets/digiface1m_small/train"
+  val_dir: "datasets/digiface1m_small/val"
   pairs_file: ""  # optional, LFW pairs file for verification evaluation
   num_workers: 4
   input_size: 112

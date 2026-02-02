@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import torch
 from torch import nn
@@ -55,6 +60,11 @@ def main() -> None:
     seed = int(config["seed"])
     set_seed(seed)
 
+    if args.epochs is not None:
+        config["train"]["epochs"] = args.epochs
+    if args.batch_size is not None:
+        config["train"]["batch_size"] = args.batch_size
+
     device = args.device or config["device"]
     device = torch.device(device)
 
@@ -69,7 +79,7 @@ def main() -> None:
 
     train_loader = DataLoader(
         train_ds,
-        batch_size=args.batch_size or config["train"]["batch_size"],
+        batch_size=config["train"]["batch_size"],
         shuffle=True,
         num_workers=config["data"]["num_workers"],
         pin_memory=True,
@@ -77,7 +87,7 @@ def main() -> None:
     )
     val_loader = DataLoader(
         val_ds,
-        batch_size=args.batch_size or config["train"]["batch_size"],
+        batch_size=config["train"]["batch_size"],
         shuffle=False,
         num_workers=config["data"]["num_workers"],
         pin_memory=True,

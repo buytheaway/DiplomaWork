@@ -41,6 +41,8 @@ backend/data/index/*
 *.faiss
 *.map.json
 benchmarks/
+*.db
+datasets/
 training/outputs/
 training/runs/
 training/checkpoints/

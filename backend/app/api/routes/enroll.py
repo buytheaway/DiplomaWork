@@ -37,6 +37,7 @@ async def enroll(
     embedding_repo = EmbeddingRepo(db)
 
     person = person_repo.create(label=label)
+    db.flush()
     embedding_row = embedding_repo.create(
         person_id=person.id,
         model=extractor.model_name,
