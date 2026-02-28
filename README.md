@@ -1,123 +1,174 @@
 # Fast Biometric Face Search
 
-Production-quality diploma prototype for face-based biometric search with FastAPI, PostgreSQL, FAISS, and a PySide6 desktop client.
+Production‑quality diploma prototype for face‑based biometric search.
 
-## Quick start
+**Stack:** FastAPI · PostgreSQL / SQLite · FAISS · PySide6 desktop client.
 
-1. For Docker/Postgres use `.env.docker.example`. For local Torch+SQLite use `.env.local.example`.
-2. Copy selected profile to `.env`.
-3. Start services:
+**Key design principle:** the ML model is a *plugin*. The system boots and works
+with `EMBEDDING_BACKEND=dummy` (zero ML dependencies). Swap to a real model
+(InsightFace / PyTorch / ONNX) by changing one env var + installing the lib.
 
-```bash
-docker-compose up --build
-```
+---
 
-The API is available at `http://localhost:8000`.
-
-## Run on Windows (PowerShell)
+## Quick start (Docker — recommended)
 
 ```powershell
-Set-Location -Path "C:\Users\mukha\OneDrive\Documents\GitHub\DiplomaWork"
-if (-not (Test-Path .env)) { Copy-Item .env.docker.example .env }
+# 1. Clone & enter repo
+Set-Location "C:\Users\mukha\OneDrive\Documents\GitHub\DiplomaWork"
+
+# 2. Create .env (defaults to EMBEDDING_BACKEND=dummy)
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+
+# 3. Start services
 docker compose up --build
 ```
 
-If Docker is not running, start Docker Desktop first.
-
-Health check (PowerShell):
+Health check:
 
 ```powershell
 Invoke-WebRequest http://localhost:8000/v1/health
+# or: curl http://127.0.0.1:8000/v1/health
 ```
 
-Docs:
+Swagger docs: <http://localhost:8000/docs>
+
+### With a real ML model (Docker)
 
 ```powershell
-Start-Process http://localhost:8000/docs
+# Rebuild with ML deps
+docker compose build --build-arg INSTALL_ML=true
+# Update .env:  EMBEDDING_BACKEND=insightface  (or torch / onnx)
+docker compose up
 ```
 
-## Backend (local)
+---
 
-```bash
+## Run on Windows (local, no Docker)
+
+### Backend
+
+```powershell
 cd backend
 python -m venv .venv
-. .venv/bin/activate  # Windows: .venv\Scripts\activate
+.venv\Scripts\activate
 pip install -r requirements.txt
-# from repo root on Windows PowerShell:
-# Copy-Item .env.local.example .env -Force
+# Optional ML: pip install -r requirements-ml.txt
+
+# Create .env in repo root (SQLite for local dev):
+Copy-Item ..\.env.local.example ..\.env -Force
+# Or just use dummy backend:
+Copy-Item ..\.env.example ..\.env -Force
+
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-## Desktop app
+### Desktop client
 
-```bash
+```powershell
 cd desktop
 python -m venv .venv
-. .venv/bin/activate  # Windows: .venv\Scripts\activate
+.venv\Scripts\activate
 pip install -r requirements.txt
 python -m app.main
 ```
 
-## Compute embeddings from dataset
+### Run tests
 
-Dataset format: `dataset/person_id_or_label/*.jpg`
-
-```bash
-python scripts/compute_embeddings.py --dataset /path/to/dataset
+```powershell
+cd backend
+pip install pytest httpx
+$env:TESTING = "true"
+$env:DATABASE_URL = "sqlite+pysqlite:///:memory:"
+pytest tests/ -v
 ```
 
-## Rebuild index
+---
 
-```bash
+## API endpoints (v1)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/health` | Health check → `{"status": "ok"}` |
+| POST | `/v1/enroll` | Enroll face (multipart `file` + optional `label`) |
+| POST | `/v1/search?k=5` | Search face (multipart `file`) |
+| GET | `/v1/persons/{id}` | Get person + embeddings |
+| DELETE | `/v1/persons/{id}` | Soft‑delete person |
+| GET | `/v1/index/stats` | Index statistics |
+| POST | `/v1/index/rebuild` | Rebuild index (`index_type` + `params`) |
+
+---
+
+## Embedding backends
+
+| Backend | Env value | Extra deps | Notes |
+|---------|-----------|------------|-------|
+| Dummy | `dummy` | none | Fixed vector `[1,0,…]` — tests & demo |
+| InsightFace | `insightface` | `insightface onnxruntime` | Full pipeline |
+| Torch | `torch` | `torch opencv-python-headless` | Custom IR‑ResNet |
+| ONNX | `onnx` | `onnxruntime opencv-python-headless` | Skeleton — BYO model |
+
+Set in `.env`:
+
+```env
+EMBEDDING_BACKEND=dummy
+EMBEDDING_DIM=512
+```
+
+---
+
+## Scripts
+
+```powershell
+# Compute embeddings from dataset (uses EMBEDDING_BACKEND from .env)
+python scripts/compute_embeddings.py --dataset path/to/dataset --batch-size 500
+
+# Rebuild FAISS index from DB
 python scripts/build_index.py --index-type hnsw
+
+# Benchmark search
+python scripts/benchmark_search.py --dataset path/to/dataset --k 5 --samples 100
 ```
 
-## Benchmark search
+---
 
-```bash
-python scripts/benchmark_search.py --dataset /path/to/dataset --k 5 --samples 100
+## Project structure
+
+```
+├── backend/
+│   ├── app/
+│   │   ├── api/          # routes + schemas (stable v1 contract)
+│   │   ├── core/         # config, logging
+│   │   ├── db/           # models, session, migrations
+│   │   └── services/
+│   │       ├── embeddings/   # interface + dummy/insightface/torch/onnx
+│   │       ├── face/         # detector, align, quality
+│   │       ├── index/        # VectorIndex ABC + FAISS adapter
+│   │       └── storage/      # SQLAlchemy repositories
+│   ├── tests/
+│   ├── requirements.txt      # core (no ML)
+│   └── requirements-ml.txt   # optional ML libs
+├── desktop/              # PySide6 GUI client
+├── scripts/              # batch processing CLIs
+├── tools/run_all.ps1     # one‑click Docker startup
+├── .env.example          # default config (dummy backend)
+├── docker-compose.yml
+└── pyproject.toml        # black/ruff/pytest config
 ```
 
-## Training (from scratch)
+---
 
-This repo includes a minimal PyTorch training pipeline under `training/` to train a custom
-face embedding model with ArcFace loss. Training does **not** store images in the backend.
+## Architecture: Ports & Adapters
 
-Default plan for your setup:
-- Train on CASIA-WebFace (train) and use LFW for validation only
-- `batch_size=64`, `epochs=20`
+* **EmbeddingExtractor** (port) — `extract_embedding(bytes) → ndarray`
+* **VectorIndex** (port) — `add / search / save / load / stats / train`
+* **Repositories** (port) — `PersonRepo`, `EmbeddingRepo`, `IndexSnapshotRepo`
 
-Run training (PowerShell):
-```powershell
-python .\training\train.py --config .\training\config.yaml
-```
-
-Evaluate weights:
-```powershell
-python .\training\eval.py --config .\training\config.yaml --weights .\training\outputs\checkpoint_epoch_020.pth --num-workers 0
-```
-
-Use trained weights in backend (set in `.env`):
-```
-EMBEDDING_BACKEND=torch
-TORCH_MODEL_PATH=training/outputs/checkpoint_epoch_020.pth
-TORCH_MODEL_ARCH=ir50
-TORCH_DEVICE=cuda
-TORCH_USE_FP16=true
-```
-
-## API endpoints
-
-- `GET /v1/health`
-- `POST /v1/enroll` (multipart: `file`, `label`)
-- `POST /v1/search?k=5` (multipart: `file`)
-- `GET /v1/persons/{id}`
-- `DELETE /v1/persons/{id}`
-- `GET /v1/index/stats`
-- `POST /v1/index/rebuild`
+Adapters are selected at startup via config. Backend code never imports ML
+libraries directly — only through the extractor factory.
 
 ## Notes
 
-- Original face images are never stored. Only embeddings and minimal metadata are persisted.
-- Index files are saved to `backend/data/index` by default.
+* Original face images are **never stored**. Only embeddings + metadata.
+* Strict single‑face policy by default (0 or >1 faces → HTTP 422).
+* Index is in‑memory for speed; persisted to disk + DB snapshot on changes.

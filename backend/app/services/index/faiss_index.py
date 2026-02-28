@@ -1,3 +1,11 @@
+"""FAISS adapter implementing :class:`VectorIndex`.
+
+Supports three index types:
+* ``flat``  — :class:`~faiss.IndexFlatIP` (brute‑force, exact).
+* ``hnsw``  — :class:`~faiss.IndexHNSWFlat` (approximate, fast).
+* ``ivfpq`` — :class:`~faiss.IndexIVFPQ` (approximate, compact; requires training).
+"""
+
 from __future__ import annotations
 
 import json

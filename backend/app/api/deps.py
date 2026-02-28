@@ -1,9 +1,13 @@
+"""FastAPI dependency‑injection providers."""
+
+from __future__ import annotations
+
 from collections.abc import Generator
 
 from fastapi import Request
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.db.session import SessionLocal
 from app.services.embeddings.interface import EmbeddingExtractor
 from app.services.index.index_manager import IndexManager
@@ -17,7 +21,7 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-def get_settings():
+def get_settings() -> Settings:
     return settings
 
 
