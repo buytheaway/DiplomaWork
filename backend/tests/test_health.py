@@ -9,12 +9,12 @@ from app.main import create_app
 
 
 def test_health_endpoint():
-    client = TestClient(create_app())
-    response = client.get("/v1/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    with TestClient(create_app()) as client:
+        response = client.get("/v1/health")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
 
 
 def test_testing_uses_dummy_extractor():
-    client = TestClient(create_app())
-    assert client.app.state.extractor.model_name == "dummy"
+    with TestClient(create_app()) as client:
+        assert client.app.state.extractor.model_name == "dummy"

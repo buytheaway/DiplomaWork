@@ -49,3 +49,4 @@ training/checkpoints/
 *.pth
 *.pt
 *.onnx
+training/config.eval.yaml

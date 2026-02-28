@@ -45,7 +45,7 @@ async def search(
     results: list[SearchResult] = []
     for match in matches:
         row = lookup.get(match.embedding_id)
-        if row is None:
+        if row is None or row.person is None:
             continue
         results.append(
             SearchResult(

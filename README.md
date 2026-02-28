@@ -4,8 +4,9 @@ Production-quality diploma prototype for face-based biometric search with FastAP
 
 ## Quick start
 
-1) Copy `.env.example` to `.env` and adjust if needed.
-2) Start services:
+1. For Docker/Postgres use `.env.docker.example`. For local Torch+SQLite use `.env.local.example`.
+2. Copy selected profile to `.env`.
+3. Start services:
 
 ```bash
 docker-compose up --build
@@ -17,9 +18,11 @@ The API is available at `http://localhost:8000`.
 
 ```powershell
 Set-Location -Path "C:\Users\mukha\OneDrive\Documents\GitHub\DiplomaWork"
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+if (-not (Test-Path .env)) { Copy-Item .env.docker.example .env }
 docker compose up --build
 ```
+
+If Docker is not running, start Docker Desktop first.
 
 Health check (PowerShell):
 
@@ -40,6 +43,8 @@ cd backend
 python -m venv .venv
 . .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+# from repo root on Windows PowerShell:
+# Copy-Item .env.local.example .env -Force
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
@@ -90,7 +95,7 @@ python .\training\train.py --config .\training\config.yaml
 
 Evaluate weights:
 ```powershell
-python .\training\eval.py --config .\training\config.yaml --weights .\training\outputs\checkpoint_epoch_020.pth
+python .\training\eval.py --config .\training\config.yaml --weights .\training\outputs\checkpoint_epoch_020.pth --num-workers 0
 ```
 
 Use trained weights in backend (set in `.env`):

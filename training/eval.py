@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weights", required=True)
     parser.add_argument("--val-dir", default=None)
     parser.add_argument("--device", default=None)
+    parser.add_argument("--num-workers", type=int, default=None)
     return parser.parse_args()
 
 
@@ -52,7 +53,9 @@ def main() -> None:
         val_ds,
         batch_size=config["train"]["batch_size"],
         shuffle=False,
-        num_workers=config["data"]["num_workers"],
+        num_workers=args.num_workers
+        if args.num_workers is not None
+        else config["data"]["num_workers"],
         pin_memory=True,
     )
 
