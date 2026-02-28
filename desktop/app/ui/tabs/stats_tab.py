@@ -1,3 +1,7 @@
+"""Stats tab — view index statistics and rebuild the HNSW index."""
+
+from __future__ import annotations
+
 import json
 import time
 
@@ -13,13 +17,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.core.api_client import ApiClient, format_api_error
+from app.core.api_client import ApiClient
+from app.core.worker import ApiWorker
 
 
 class StatsTab(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.api = ApiClient()
+        self._worker: ApiWorker | None = None
+        self._op_start: float = 0.0
         self.stats_view = QTextEdit()
         self.stats_view.setReadOnly(True)
         self.last_rebuild_params: dict[str, int] | None = None
@@ -30,11 +37,11 @@ class StatsTab(QWidget):
         self.efc_input = QLineEdit("200")
         self.efs_input = QLineEdit("64")
 
-        refresh_btn = QPushButton("Refresh stats")
-        refresh_btn.clicked.connect(self._refresh)
+        self.refresh_btn = QPushButton("Refresh stats")
+        self.refresh_btn.clicked.connect(self._refresh)
 
-        rebuild_btn = QPushButton("Rebuild HNSW")
-        rebuild_btn.clicked.connect(self._rebuild)
+        self.rebuild_btn = QPushButton("Rebuild HNSW")
+        self.rebuild_btn.clicked.connect(self._rebuild)
 
         form = QFormLayout()
         form.addRow(QLabel("HNSW M"), self.m_input)
@@ -42,24 +49,42 @@ class StatsTab(QWidget):
         form.addRow(QLabel("HNSW efSearch"), self.efs_input)
 
         layout = QVBoxLayout()
-        layout.addWidget(refresh_btn, alignment=Qt.AlignLeft)
+        layout.addWidget(self.refresh_btn, alignment=Qt.AlignLeft)
         layout.addWidget(self.latency_label, alignment=Qt.AlignLeft)
         layout.addWidget(self.stats_view)
         layout.addWidget(self.last_rebuild_label)
         layout.addWidget(QLabel("Rebuild index (HNSW)"))
         layout.addLayout(form)
-        layout.addWidget(rebuild_btn, alignment=Qt.AlignLeft)
+        layout.addWidget(self.rebuild_btn, alignment=Qt.AlignLeft)
         self.setLayout(layout)
 
+    # ── helpers ───────────────────────────────────────────────────────────
+
+    def _run(self, func, *args) -> None:
+        self._op_start = time.perf_counter()
+        self.refresh_btn.setEnabled(False)
+        self.rebuild_btn.setEnabled(False)
+        self._worker = ApiWorker(func, *args, parent=self)
+        self._worker.finished.connect(self._on_success)
+        self._worker.failed.connect(self._on_error)
+        self._worker.start()
+
+    def _on_success(self, result: object) -> None:
+        self.refresh_btn.setEnabled(True)
+        self.rebuild_btn.setEnabled(True)
+        latency_ms = (time.perf_counter() - self._op_start) * 1000
+        self.latency_label.setText(f"Latency: {latency_ms:.2f} ms")
+        self.stats_view.setPlainText(json.dumps(result, indent=2, default=str))
+
+    def _on_error(self, error: str) -> None:
+        self.refresh_btn.setEnabled(True)
+        self.rebuild_btn.setEnabled(True)
+        QMessageBox.critical(self, "Error", error)
+
+    # ── actions ──────────────────────────────────────────────────────────
+
     def _refresh(self) -> None:
-        try:
-            start = time.perf_counter()
-            stats = self.api.index_stats()
-            latency_ms = (time.perf_counter() - start) * 1000
-            self.latency_label.setText(f"Latency: {latency_ms:.2f} ms")
-            self.stats_view.setPlainText(json.dumps(stats, indent=2))
-        except Exception as exc:
-            QMessageBox.critical(self, "Stats failed", format_api_error(exc))
+        self._run(self.api.index_stats)
 
     def _rebuild(self) -> None:
         try:
@@ -68,14 +93,11 @@ class StatsTab(QWidget):
                 "ef_construction": int(self.efc_input.text()),
                 "ef_search": int(self.efs_input.text()),
             }
-            start = time.perf_counter()
-            stats = self.api.rebuild_index("hnsw", params)
-            latency_ms = (time.perf_counter() - start) * 1000
-            self.latency_label.setText(f"Latency: {latency_ms:.2f} ms")
-            self.last_rebuild_params = params
-            self.last_rebuild_label.setText(
-                f"Last rebuild params: {json.dumps(self.last_rebuild_params)}"
-            )
-            self.stats_view.setPlainText(json.dumps(stats, indent=2))
-        except Exception as exc:
-            QMessageBox.critical(self, "Rebuild failed", format_api_error(exc))
+        except ValueError:
+            QMessageBox.warning(self, "Invalid", "All HNSW params must be integers")
+            return
+        self.last_rebuild_params = params
+        self.last_rebuild_label.setText(
+            f"Last rebuild params: {json.dumps(self.last_rebuild_params)}"
+        )
+        self._run(self.api.rebuild_index, "hnsw", params)

@@ -1,3 +1,7 @@
+"""HTTP client for the backend REST API."""
+
+from __future__ import annotations
+
 import json
 from typing import Any
 
@@ -37,6 +41,8 @@ class ApiClient:
             raise ApiError(response.status_code, response.text)
         return response.json()
 
+    # ── enroll / search ──────────────────────────────────────────────────
+
     def enroll(self, image_path: str, label: str | None) -> dict[str, Any]:
         with open(image_path, "rb") as handle:
             files = {"file": handle}
@@ -53,6 +59,8 @@ class ApiClient:
                 files=files,
             )
 
+    # ── index ────────────────────────────────────────────────────────────
+
     def index_stats(self) -> dict[str, Any]:
         return self._request_json("GET", f"{self.base_url}/v1/index/stats")
 
@@ -64,3 +72,11 @@ class ApiClient:
             data=json.dumps(payload),
             headers={"Content-Type": "application/json"},
         )
+
+    # ── persons ──────────────────────────────────────────────────────────
+
+    def get_person(self, person_id: str) -> dict[str, Any]:
+        return self._request_json("GET", f"{self.base_url}/v1/persons/{person_id}")
+
+    def delete_person(self, person_id: str) -> dict[str, Any]:
+        return self._request_json("DELETE", f"{self.base_url}/v1/persons/{person_id}")

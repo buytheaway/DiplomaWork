@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     ivfpq_m: int = Field(16, alias="IVFPQ_M")
     ivfpq_nbits: int = Field(8, alias="IVFPQ_NBITS")
 
+    # ── security / CORS ──────────────────────────────────────────────────
+    api_key: str = Field("", alias="API_KEY")
+    cors_origins: str = Field("*", alias="CORS_ORIGINS")
+
     # ── runtime ──────────────────────────────────────────────────────────
     auto_save_index: bool = Field(True, alias="AUTO_SAVE_INDEX")
 

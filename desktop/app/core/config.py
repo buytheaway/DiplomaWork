@@ -1,5 +1,9 @@
-from dataclasses import dataclass
+"""Desktop client configuration."""
+
+from __future__ import annotations
+
 import os
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

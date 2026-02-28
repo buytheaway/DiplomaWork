@@ -1,3 +1,7 @@
+"""Search tab — query the index with a face image."""
+
+from __future__ import annotations
+
 import time
 
 from PySide6.QtCore import Qt
@@ -16,7 +20,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.core.api_client import ApiClient, format_api_error
+from app.core.api_client import ApiClient
+from app.core.worker import ApiWorker
 
 
 class NumericItem(QTableWidgetItem):
@@ -25,7 +30,7 @@ class NumericItem(QTableWidgetItem):
         super().__init__(text)
         self.sort_value = value if value is not None else float("-inf")
 
-    def __lt__(self, other: "QTableWidgetItem") -> bool:
+    def __lt__(self, other: QTableWidgetItem) -> bool:
         if isinstance(other, NumericItem):
             return self.sort_value < other.sort_value
         return super().__lt__(other)
@@ -35,6 +40,8 @@ class SearchTab(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.api = ApiClient()
+        self._worker: ApiWorker | None = None
+        self._search_start: float = 0.0
         self.image_path = QLineEdit()
         self.k_input = QSpinBox()
         self.k_input.setRange(1, 100)
@@ -43,8 +50,8 @@ class SearchTab(QWidget):
         browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(self._browse)
 
-        search_btn = QPushButton("Search")
-        search_btn.clicked.connect(self._search)
+        self.search_btn = QPushButton("Search")
+        self.search_btn.clicked.connect(self._search)
 
         file_row = QHBoxLayout()
         file_row.addWidget(self.image_path)
@@ -62,7 +69,7 @@ class SearchTab(QWidget):
 
         layout = QVBoxLayout()
         layout.addLayout(form)
-        layout.addWidget(search_btn, alignment=Qt.AlignLeft)
+        layout.addWidget(self.search_btn, alignment=Qt.AlignLeft)
         layout.addWidget(self.latency_label, alignment=Qt.AlignLeft)
         layout.addWidget(self.table)
         self.setLayout(layout)
@@ -78,22 +85,28 @@ class SearchTab(QWidget):
             QMessageBox.warning(self, "Missing", "Select an image file")
             return
         k = self.k_input.value()
-        try:
-            start = time.perf_counter()
-            response = self.api.search(path, k)
-            latency_ms = (time.perf_counter() - start) * 1000
-            self.latency_label.setText(f"Latency: {latency_ms:.2f} ms")
-            results = response.get("results", [])
-            self.table.setSortingEnabled(False)
-            self.table.setRowCount(len(results))
-            for row_idx, result in enumerate(results):
-                self.table.setItem(row_idx, 0, QTableWidgetItem(result.get("person_id", "")))
-                self.table.setItem(row_idx, 1, QTableWidgetItem(result.get("label") or ""))
-                score = result.get("score")
-                distance = result.get("distance")
-                self.table.setItem(row_idx, 2, NumericItem(score))
-                self.table.setItem(row_idx, 3, NumericItem(distance))
-            self.table.setSortingEnabled(True)
-            self.table.sortItems(2, Qt.DescendingOrder)
-        except Exception as exc:
-            QMessageBox.critical(self, "Search failed", format_api_error(exc))
+        self.search_btn.setEnabled(False)
+        self._search_start = time.perf_counter()
+        self._worker = ApiWorker(self.api.search, path, k, parent=self)
+        self._worker.finished.connect(self._on_success)
+        self._worker.failed.connect(self._on_error)
+        self._worker.start()
+
+    def _on_success(self, response: object) -> None:
+        self.search_btn.setEnabled(True)
+        latency_ms = (time.perf_counter() - self._search_start) * 1000
+        self.latency_label.setText(f"Latency: {latency_ms:.2f} ms")
+        results = response.get("results", []) if isinstance(response, dict) else []
+        self.table.setSortingEnabled(False)
+        self.table.setRowCount(len(results))
+        for row_idx, result in enumerate(results):
+            self.table.setItem(row_idx, 0, QTableWidgetItem(result.get("person_id", "")))
+            self.table.setItem(row_idx, 1, QTableWidgetItem(result.get("label") or ""))
+            self.table.setItem(row_idx, 2, NumericItem(result.get("score")))
+            self.table.setItem(row_idx, 3, NumericItem(result.get("distance")))
+        self.table.setSortingEnabled(True)
+        self.table.sortItems(2, Qt.DescendingOrder)
+
+    def _on_error(self, error: str) -> None:
+        self.search_btn.setEnabled(True)
+        QMessageBox.critical(self, "Search failed", error)

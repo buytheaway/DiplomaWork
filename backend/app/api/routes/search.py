@@ -1,3 +1,7 @@
+"""Face search endpoint."""
+
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
@@ -9,6 +13,7 @@ from app.services.embeddings.interface import (
     MultipleFacesDetectedError,
     NoFaceDetectedError,
 )
+from app.services.index.index_manager import IndexManager
 from app.services.storage.repositories import EmbeddingRepo
 
 router = APIRouter()
@@ -20,7 +25,7 @@ async def search(
     k: int = Query(5, ge=1, le=100),
     db: Session = Depends(get_db),
     extractor: EmbeddingExtractor = Depends(get_extractor),
-    index_manager=Depends(get_index_manager),
+    index_manager: IndexManager = Depends(get_index_manager),
 ) -> SearchResponse:
     image_bytes = await file.read()
     try:

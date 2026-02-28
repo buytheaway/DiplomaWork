@@ -12,7 +12,10 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 import numpy as np
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Security
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
+from starlette.responses import JSONResponse
 
 from app.api.routes import enroll, health, index, persons, search
 from app.core.config import get_settings
@@ -63,6 +66,31 @@ def create_app() -> FastAPI:
     np.random.seed(settings.seed)
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+    # ── CORS ─────────────────────────────────────────────────────────
+    origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # ── API-key guard (skips /health and /docs) ──────────────────────
+    if settings.api_key:
+        _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+        @app.middleware("http")
+        async def _check_api_key(request: Request, call_next):
+            path = request.url.path
+            if path.endswith("/health") or path.startswith("/docs") or path.startswith("/openapi"):
+                return await call_next(request)
+            key = request.headers.get("X-API-Key", "")
+            if key != settings.api_key:
+                return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key"})
+            return await call_next(request)
+
     app.include_router(health.router, prefix=settings.api_v1_prefix)
     app.include_router(enroll.router, prefix=settings.api_v1_prefix)
     app.include_router(search.router, prefix=settings.api_v1_prefix)

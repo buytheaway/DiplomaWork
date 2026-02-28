@@ -1,10 +1,19 @@
+"""Database ORM models."""
+
+from __future__ import annotations
+
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
 from app.db.types import GUID, JSONType
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import LargeBinary
+
+
+def _utcnow() -> datetime:
+    """Timezone-aware UTC timestamp (replaces deprecated ``datetime.utcnow``)."""
+    return datetime.now(timezone.utc)
 
 
 class Base(DeclarativeBase):
@@ -17,9 +26,9 @@ class Person(Base):
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     label: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
     embeddings: Mapped[list["Embedding"]] = relationship(
@@ -35,7 +44,7 @@ class Embedding(Base):
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     dim: Mapped[int] = mapped_column(nullable=False)
     vector: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     person: Mapped[Person] = relationship(back_populates="embeddings")
@@ -49,4 +58,4 @@ class IndexSnapshot(Base):
     params: Mapped[dict] = mapped_column(JSONType(), nullable=False)
     path: Mapped[str] = mapped_column(Text, nullable=False)
     embeddings_count: Mapped[int] = mapped_column(nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)

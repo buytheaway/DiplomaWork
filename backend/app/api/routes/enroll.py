@@ -1,3 +1,7 @@
+"""Face enrolment endpoint."""
+
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
@@ -10,6 +14,7 @@ from app.services.embeddings.interface import (
     MultipleFacesDetectedError,
     NoFaceDetectedError,
 )
+from app.services.index.index_manager import IndexManager
 from app.services.storage.repositories import EmbeddingRepo, PersonRepo
 
 router = APIRouter()
@@ -21,7 +26,7 @@ async def enroll(
     label: str | None = Form(None),
     db: Session = Depends(get_db),
     extractor: EmbeddingExtractor = Depends(get_extractor),
-    index_manager=Depends(get_index_manager),
+    index_manager: IndexManager = Depends(get_index_manager),
 ) -> EnrollResponse:
     image_bytes = await file.read()
     try:

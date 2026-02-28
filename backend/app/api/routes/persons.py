@@ -1,3 +1,7 @@
+"""Person management endpoints."""
+
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -18,7 +22,7 @@ def get_person(person_id: str, db: Session = Depends(get_db)) -> PersonResponse:
 
 
 @router.delete("/persons/{person_id}")
-def delete_person(person_id: str, db: Session = Depends(get_db)):
+def delete_person(person_id: str, db: Session = Depends(get_db)) -> dict[str, str]:
     repo = PersonRepo(db)
     deleted = repo.soft_delete(person_id)
     if not deleted:
