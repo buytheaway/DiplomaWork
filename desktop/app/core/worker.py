@@ -9,7 +9,7 @@ from PySide6.QtCore import QThread, Signal
 
 
 class ApiWorker(QThread):
-    """Execute *func(\*args, \*\*kwargs)* in a background thread.
+    r"""Execute *func(\*args, \*\*kwargs)* in a background thread.
 
     Signals:
         finished(result: object)  — emitted on success with the return value.
