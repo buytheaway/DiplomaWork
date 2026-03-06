@@ -34,8 +34,8 @@ class PersonRepo:
             select(Person)
             .where(Person.status == "active")
             .order_by(Person.created_at.desc())
-            .offset(offset)
             .limit(limit)
+            .offset(offset)
         )
         return list(self.db.execute(stmt).scalars().all())
 

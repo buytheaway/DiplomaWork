@@ -1,3 +1,4 @@
+# Вкладка регистрации лица
 from __future__ import annotations
 
 import json
@@ -29,93 +30,84 @@ class EnrollTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 20, 20, 20)
+        root.setContentsMargins(24, 24, 24, 24)
         root.setSpacing(16)
 
-        # ── верхняя часть: выбор файла + превью ───────────────────────
+        # верхняя часть: форма + превью
         top_row = QHBoxLayout()
         top_row.setSpacing(16)
 
-        # Левая колонка — форма
+        # Карточка формы
         form_card = Card()
-        form = form_card.body()
+        fc = form_card.body()
+        fc.addWidget(SectionHeading("Register new face"))
+        fc.addSpacing(4)
 
-        form.addWidget(SectionHeading("Enroll a face"))
-        form.addWidget(DimLabel("Select an image and optionally assign a label"))
-        form.addSpacing(6)
-
-        # image path
-        path_label = DimLabel("Image file")
-        form.addWidget(path_label)
-
-        path_row = QHBoxLayout()
-        path_row.setSpacing(8)
+        # Файл
+        fc.addWidget(DimLabel("Image file"))
+        file_row = QHBoxLayout()
+        file_row.setSpacing(8)
         self.image_path = QLineEdit()
-        self.image_path.setPlaceholderText("Choose an image…")
+        self.image_path.setPlaceholderText("Select an image...")
         self.image_path.setReadOnly(True)
+        file_row.addWidget(self.image_path, 1)
+
         browse_btn = QPushButton("Browse")
         browse_btn.setFixedWidth(80)
         browse_btn.clicked.connect(self._browse)
-        path_row.addWidget(self.image_path, 1)
-        path_row.addWidget(browse_btn)
-        form.addLayout(path_row)
+        file_row.addWidget(browse_btn)
+        fc.addLayout(file_row)
 
-        form.addSpacing(4)
+        fc.addSpacing(8)
 
-        # label
-        label_label = DimLabel("Label (optional)")
-        form.addWidget(label_label)
+        # Метка
+        fc.addWidget(DimLabel("Label (optional — имя или ID человека)"))
         self.label_input = QLineEdit()
-        self.label_input.setPlaceholderText("e.g. Alice, Bob")
-        form.addWidget(self.label_input)
+        self.label_input.setPlaceholderText("e.g. Alice, employee_042")
+        fc.addWidget(self.label_input)
 
-        form.addSpacing(8)
+        fc.addSpacing(12)
 
-        # action button
+        # Кнопка
         self.enroll_btn = QPushButton("Enroll")
         self.enroll_btn.setObjectName("primary")
-        self.enroll_btn.setFixedWidth(140)
+        self.enroll_btn.setFixedHeight(36)
         self.enroll_btn.clicked.connect(self._enroll)
-        form.addWidget(self.enroll_btn)
+        fc.addWidget(self.enroll_btn)
 
         self.status_label = DimLabel("")
-        form.addWidget(self.status_label)
-
-        form.addStretch()
-
-        # Правая колонка — превью
-        preview_card = Card()
-        pv = preview_card.body()
-        pv.setAlignment(Qt.AlignCenter)
-        pv.addWidget(DimLabel("Preview"))
-        self.preview = ImagePreview()
-        pv.addWidget(self.preview, alignment=Qt.AlignCenter)
-        pv.addStretch()
+        fc.addWidget(self.status_label)
+        fc.addStretch()
 
         top_row.addWidget(form_card, 3)
+
+        # Превью
+        preview_card = Card()
+        pc = preview_card.body()
+        pc.setAlignment(Qt.AlignCenter)
+        pc.addWidget(SectionHeading("Preview"))
+        self.preview = ImagePreview(180)
+        pc.addWidget(self.preview, 0, Qt.AlignCenter)
+        pc.addStretch()
         top_row.addWidget(preview_card, 1)
 
-        root.addLayout(top_row)
+        root.addLayout(top_row, 1)
 
-        # ── результат ────────────────────────────────────────────────
+        # Ответ
         result_card = Card()
         rc = result_card.body()
         rc.addWidget(SectionHeading("Response"))
         self.response_view = QTextEdit()
         self.response_view.setReadOnly(True)
-        self.response_view.setMaximumHeight(160)
-        self.response_view.setPlaceholderText("Enrollment result will appear here…")
+        self.response_view.setMaximumHeight(140)
+        self.response_view.setPlaceholderText("Enrollment result will appear here...")
         rc.addWidget(self.response_view)
-
         root.addWidget(result_card)
-        root.addStretch()
-
-    # ── actions ──────────────────────────────────────────────────────
 
     def _browse(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Select image", "",
-            "Images (*.jpg *.jpeg *.png *.bmp *.webp);;All files (*)",
+            "Images (*.jpg *.jpeg *.png *.bmp *.webp);;All files (*.*)",
         )
         if path:
             self.image_path.setText(path)
@@ -128,7 +120,7 @@ class EnrollTab(QWidget):
             return
         label = self.label_input.text().strip() or None
         self.enroll_btn.setEnabled(False)
-        self.status_label.setText("Enrolling\u2026")
+        self.status_label.setText("Enrolling...")
         self._worker = ApiWorker(self.api.enroll, path, label, parent=self)
         self._worker.finished.connect(self._on_success)
         self._worker.failed.connect(self._on_error)

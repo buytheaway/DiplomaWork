@@ -161,5 +161,5 @@ class StatsTab(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         # Автозагрузка при первом показе
-        if self.stat_backend._value.text() == "-":
+        if self.stat_backend._value_text == "-":
             self._refresh()

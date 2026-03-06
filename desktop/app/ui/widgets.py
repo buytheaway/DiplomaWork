@@ -1,9 +1,5 @@
-# Переиспользуемые UI-блоки — карточка, info-row, badge, image preview.
-# Минимум абстракций, максимум пользы.
-
+# Переиспользуемые виджеты для desktop UI
 from __future__ import annotations
-
-from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
@@ -12,111 +8,96 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QVBoxLayout,
-    QWidget,
 )
 
 
 class Card(QFrame):
-    # Визуальная группировка — по сути просто QFrame с классом .card
-    def __init__(self, parent: QWidget | None = None) -> None:
+    # Карточка с тёмным фоном и скруглёнными углами
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setProperty("class", "card")
+        self.setProperty("class", "card")  # для QSS
+        self.setObjectName("card")
+        self.setFrameShape(QFrame.NoFrame)
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(16, 14, 16, 14)
-        self._layout.setSpacing(10)
+        self._layout.setSpacing(8)
 
     def body(self) -> QVBoxLayout:
         return self._layout
 
 
 class SectionHeading(QLabel):
-    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+    def __init__(self, text: str, parent=None) -> None:
         super().__init__(text, parent)
-        self.setProperty("class", "sectionHeading")
+        self.setStyleSheet("font-size: 14px; font-weight: 600; color: #e1e2e6; background: transparent;")
 
 
 class DimLabel(QLabel):
-    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+    # Бледный вспомогательный текст
+    def __init__(self, text: str = "", parent=None) -> None:
         super().__init__(text, parent)
-        self.setProperty("class", "dimLabel")
+        self.setStyleSheet("color: #8b8d93; font-size: 12px; background: transparent;")
 
 
-class InfoRow(QWidget):
-    # Строка «ключ — значение» для отображения статистики
-    def __init__(self, key: str, value: str = "-", parent: QWidget | None = None) -> None:
+class InfoRow(QLabel):
+    # Ключ: значение в одну строку
+    def __init__(self, key: str, value: str = "-", parent=None) -> None:
         super().__init__(parent)
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(0, 2, 0, 2)
+        self._key = key
+        self.set_value(value)
+        self.setStyleSheet("font-size: 13px; background: transparent;")
 
-        self._key = DimLabel(key)
-        self._value = QLabel(value)
-        self._value.setStyleSheet("font-weight: 500;")
-
-        lay.addWidget(self._key)
-        lay.addStretch()
-        lay.addWidget(self._value)
-
-    def set_value(self, text: str) -> None:
-        self._value.setText(text)
+    def set_value(self, value: str) -> None:
+        self.setText(f'<span style="color:#8b8d93">{self._key}:</span>  {value}')
+        self.setTextFormat(Qt.RichText)
 
 
-class StatBox(QWidget):
-    # Крупное число + мелкая подпись (для dashboard)
-    def __init__(self, key: str, value: str = "-", parent: QWidget | None = None) -> None:
+class StatBox(QLabel):
+    # Большое число + подпись
+    def __init__(self, label: str, value: str = "-", parent=None) -> None:
         super().__init__(parent)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(12, 10, 12, 10)
-        lay.setSpacing(2)
-        lay.setAlignment(Qt.AlignCenter)
+        self._label = label
+        self._value_text = value
+        self._render()
+        self.setAlignment(Qt.AlignCenter)
+        self.setStyleSheet("background: transparent;")
 
-        self._value = QLabel(value)
-        self._value.setProperty("class", "infoValue")
-        self._value.setAlignment(Qt.AlignCenter)
+    def _render(self) -> None:
+        self.setText(
+            f'<div style="text-align:center">'
+            f'<span style="font-size:22px; font-weight:700; color:#e1e2e6">{self._value_text}</span><br>'
+            f'<span style="font-size:11px; color:#8b8d93">{self._label}</span>'
+            f'</div>'
+        )
+        self.setTextFormat(Qt.RichText)
 
-        self._key = QLabel(key)
-        self._key.setProperty("class", "infoKey")
-        self._key.setAlignment(Qt.AlignCenter)
-
-        lay.addWidget(self._value)
-        lay.addWidget(self._key)
-
-    def set_value(self, text: str) -> None:
-        self._value.setText(text)
+    def set_value(self, value: str) -> None:
+        self._value_text = value
+        self._render()
 
 
 class ImagePreview(QLabel):
-    # Превью выбранного изображения (фиксированный размер)
-    MAX_W = 160
-    MAX_H = 160
-
-    def __init__(self, parent: QWidget | None = None) -> None:
+    # Превью картинки с фиксированным размером
+    def __init__(self, size: int = 160, parent=None) -> None:
         super().__init__(parent)
-        self.setObjectName("imagePreview")
-        self.setFixedSize(self.MAX_W, self.MAX_H)
+        self._size = size
+        self.setFixedSize(size, size)
         self.setAlignment(Qt.AlignCenter)
-        self._show_placeholder()
+        self.setStyleSheet(
+            f"background-color: #2c2d31; border: 1px solid #3a3b40;"
+            f" border-radius: 6px; color: #8b8d93; font-size: 11px;"
+        )
+        self.setText("No image")
 
     def load(self, path: str) -> None:
-        p = Path(path)
-        if not p.is_file():
-            self._show_placeholder()
-            return
-        pix = QPixmap(str(p))
+        pix = QPixmap(path)
         if pix.isNull():
-            self._show_placeholder()
+            self.setText("Invalid image")
             return
-        scaled = pix.scaled(
-            self.MAX_W - 4, self.MAX_H - 4,
-            Qt.KeepAspectRatio, Qt.SmoothTransformation,
+        self.setPixmap(
+            pix.scaled(self._size, self._size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         )
-        self.setPixmap(scaled)
 
     def clear_preview(self) -> None:
-        self._show_placeholder()
-
-    def _show_placeholder(self) -> None:
         self.clear()
         self.setText("No image")
-        self.setStyleSheet(
-            "color: #5a5b60; font-size: 11px; font-style: italic;"
-        )

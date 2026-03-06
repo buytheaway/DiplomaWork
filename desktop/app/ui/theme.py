@@ -1,288 +1,179 @@
-# Centralized dark theme for the desktop app.
-# Restrained professional look — не Dribbble-концепт, а рабочий инструмент.
-
+# Централизованная тема для desktop-клиента
 from __future__ import annotations
 
-# ── цвета ─────────────────────────────────────────────────────────────
-BG_WINDOW = "#1a1b1e"
-BG_CARD = "#232428"
+# Палитра
+BG_WINDOW = "#1e1f22"
+BG_CARD = "#27282c"
 BG_INPUT = "#2c2d31"
-BG_HEADER = "#1e1f23"
-BORDER = "#38393e"
-BORDER_FOCUS = "#5b8def"
-TEXT = "#d1d1d6"
-TEXT_DIM = "#8e8e93"
-TEXT_HEADING = "#f0f0f2"
+BG_HOVER = "#35363b"
+BG_TABLE_ALT = "#24252a"
+BORDER = "#3a3b40"
+TEXT = "#c8cad0"
+TEXT_DIM = "#8b8d93"
+TEXT_HEADING = "#e1e2e6"
 ACCENT = "#5b8def"
-ACCENT_HOVER = "#4a7de0"
-ACCENT_PRESSED = "#3b6dd1"
-SUCCESS = "#34c759"
-DANGER = "#ff453a"
-WARNING = "#ffd60a"
-BADGE_MATCH_BG = "#1a3d2a"
-BADGE_UNKNOWN_BG = "#3d1a1a"
-TABLE_ROW_ALT = "#292a2e"
+ACCENT_HOVER = "#7ba4f7"
+GREEN = "#3ba55d"
+RED = "#ed4245"
+ORANGE = "#faa61a"
 
 
 def app_stylesheet() -> str:
     return f"""
-    /* ── база ─────────────────────────────────────────── */
-    QMainWindow, QWidget {{
+    /* ── глобальные ── */
+    QWidget {{
         background-color: {BG_WINDOW};
         color: {TEXT};
-        font-family: "Segoe UI", Inter, system-ui, sans-serif;
+        font-family: "Segoe UI", sans-serif;
         font-size: 13px;
     }}
 
-    /* ── header bar ───────────────────────────────────── */
-    #appHeader {{
-        background-color: {BG_HEADER};
-        border-bottom: 1px solid {BORDER};
-        padding: 10px 16px;
-    }}
-    #appTitle {{
-        font-size: 15px;
-        font-weight: 600;
-        color: {TEXT_HEADING};
-    }}
-    #appSubtitle {{
-        font-size: 11px;
-        color: {TEXT_DIM};
-    }}
-
-    /* ── tab bar ──────────────────────────────────────── */
-    QTabWidget::pane {{
-        border: none;
-        background: {BG_WINDOW};
-    }}
-    QTabBar {{
-        background: {BG_HEADER};
-        border-bottom: 1px solid {BORDER};
-    }}
-    QTabBar::tab {{
-        background: transparent;
-        color: {TEXT_DIM};
-        padding: 10px 20px;
-        margin: 0;
-        border: none;
-        border-bottom: 2px solid transparent;
-        font-weight: 500;
-        font-size: 13px;
-    }}
-    QTabBar::tab:selected {{
-        color: {ACCENT};
-        border-bottom: 2px solid {ACCENT};
-    }}
-    QTabBar::tab:hover:!selected {{
-        color: {TEXT};
-        background: rgba(91, 141, 239, 0.06);
-    }}
-
-    /* ── карточка (section card) ──────────────────────── */
-    .card {{
-        background: {BG_CARD};
+    /* ── карточки ── */
+    QFrame.card {{
+        background-color: {BG_CARD};
         border: 1px solid {BORDER};
         border-radius: 8px;
-        padding: 16px;
     }}
 
-    /* ── inputs ───────────────────────────────────────── */
-    QLineEdit, QSpinBox {{
-        background: {BG_INPUT};
+    /* ── инпуты ── */
+    QLineEdit, QSpinBox, QTextEdit {{
+        background-color: {BG_INPUT};
         border: 1px solid {BORDER};
-        border-radius: 6px;
-        padding: 7px 10px;
+        border-radius: 4px;
+        padding: 6px 8px;
         color: {TEXT};
-        font-size: 13px;
         selection-background-color: {ACCENT};
     }}
-    QLineEdit:focus, QSpinBox:focus {{
-        border: 1px solid {BORDER_FOCUS};
-    }}
-    QLineEdit:disabled {{
-        color: {TEXT_DIM};
+    QLineEdit:focus, QSpinBox:focus, QTextEdit:focus {{
+        border-color: {ACCENT};
     }}
 
-    /* ── buttons ──────────────────────────────────────── */
+    /* ── кнопки ── */
     QPushButton {{
-        background: {BG_INPUT};
+        background-color: {BG_INPUT};
         border: 1px solid {BORDER};
-        border-radius: 6px;
-        padding: 7px 16px;
+        border-radius: 4px;
+        padding: 6px 16px;
         color: {TEXT};
-        font-weight: 500;
-        font-size: 13px;
+        min-height: 20px;
     }}
     QPushButton:hover {{
-        background: #35363b;
-        border-color: #4a4b50;
+        background-color: {BG_HOVER};
+        border-color: {TEXT_DIM};
     }}
     QPushButton:pressed {{
-        background: #2a2b30;
+        background-color: {BORDER};
     }}
     QPushButton:disabled {{
         color: {TEXT_DIM};
-        background: {BG_INPUT};
+        background-color: {BG_WINDOW};
     }}
-
-    /* primary action */
     QPushButton#primary {{
-        background: {ACCENT};
-        border: 1px solid {ACCENT};
-        color: #fff;
+        background-color: {ACCENT};
+        border-color: {ACCENT};
+        color: #ffffff;
         font-weight: 600;
     }}
     QPushButton#primary:hover {{
-        background: {ACCENT_HOVER};
+        background-color: {ACCENT_HOVER};
     }}
-    QPushButton#primary:pressed {{
-        background: {ACCENT_PRESSED};
-    }}
-    QPushButton#primary:disabled {{
-        background: #3a4a6e;
-        border-color: #3a4a6e;
-        color: #8a9ec0;
-    }}
-
-    /* danger */
     QPushButton#danger {{
-        border-color: {DANGER};
-        color: {DANGER};
+        background-color: transparent;
+        border-color: {RED};
+        color: {RED};
     }}
     QPushButton#danger:hover {{
-        background: rgba(255, 69, 58, 0.12);
+        background-color: {RED};
+        color: #ffffff;
     }}
 
-    /* ── таблицы ──────────────────────────────────────── */
+    /* ── таблицы ── */
     QTableWidget {{
-        background: {BG_CARD};
+        background-color: {BG_CARD};
+        alternate-background-color: {BG_TABLE_ALT};
         border: 1px solid {BORDER};
-        border-radius: 6px;
+        border-radius: 4px;
         gridline-color: {BORDER};
-        font-size: 12px;
-    }}
-    QTableWidget::item {{
-        padding: 6px 8px;
-        border: none;
-    }}
-    QTableWidget::item:selected {{
-        background: rgba(91, 141, 239, 0.18);
-        color: {TEXT};
+        selection-background-color: {ACCENT};
+        selection-color: #ffffff;
     }}
     QHeaderView::section {{
-        background: {BG_HEADER};
-        color: {TEXT_DIM};
-        font-weight: 600;
-        font-size: 11px;
-        text-transform: uppercase;
-        padding: 7px 8px;
+        background-color: {BG_INPUT};
         border: none;
         border-bottom: 1px solid {BORDER};
-        border-right: 1px solid {BORDER};
-    }}
-    QHeaderView::section:last {{
-        border-right: none;
-    }}
-
-    /* ── scrollbar ────────────────────────────────────── */
-    QScrollBar:vertical {{
-        background: transparent;
-        width: 8px;
-        margin: 0;
-    }}
-    QScrollBar::handle:vertical {{
-        background: #44454a;
-        border-radius: 4px;
-        min-height: 30px;
-    }}
-    QScrollBar::handle:vertical:hover {{
-        background: #5a5b60;
-    }}
-    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-        height: 0;
-    }}
-
-    /* ── statusbar ────────────────────────────────────── */
-    QStatusBar {{
-        background: {BG_HEADER};
-        color: {TEXT_DIM};
-        border-top: 1px solid {BORDER};
-        font-size: 11px;
-        padding: 2px 8px;
-    }}
-
-    /* ── section heading ──────────────────────────────── */
-    .sectionHeading {{
-        font-size: 13px;
+        padding: 5px 8px;
         font-weight: 600;
-        color: {TEXT_HEADING};
-        padding: 0;
-        margin: 0;
-    }}
-
-    /* ── dim label ────────────────────────────────────── */
-    .dimLabel {{
         color: {TEXT_DIM};
-        font-size: 12px;
     }}
 
-    /* ── badges ───────────────────────────────────────── */
-    #badgeMatch {{
-        background: {BADGE_MATCH_BG};
-        color: {SUCCESS};
-        border: 1px solid {SUCCESS};
-        border-radius: 4px;
-        padding: 4px 12px;
-        font-weight: 700;
-        font-size: 14px;
+    /* ── вкладки ── */
+    QTabWidget::pane {{
+        border: none;
+        background-color: {BG_WINDOW};
     }}
-    #badgeUnknown {{
-        background: {BADGE_UNKNOWN_BG};
-        color: {DANGER};
-        border: 1px solid {DANGER};
-        border-radius: 4px;
-        padding: 4px 12px;
-        font-weight: 700;
-        font-size: 14px;
-    }}
-
-    /* ── info value (stats) ───────────────────────────── */
-    .infoValue {{
-        font-size: 22px;
-        font-weight: 700;
-        color: {TEXT_HEADING};
-    }}
-    .infoKey {{
-        font-size: 11px;
+    QTabBar::tab {{
+        background-color: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        padding: 8px 20px;
         color: {TEXT_DIM};
         font-weight: 500;
     }}
-
-    /* ── text edit (readonly response) ────────────────── */
-    QTextEdit {{
-        background: {BG_INPUT};
-        border: 1px solid {BORDER};
-        border-radius: 6px;
-        padding: 8px;
+    QTabBar::tab:selected {{
+        color: {ACCENT};
+        border-bottom-color: {ACCENT};
+    }}
+    QTabBar::tab:hover:!selected {{
         color: {TEXT};
-        font-family: "Cascadia Code", "Consolas", monospace;
+        border-bottom-color: {TEXT_DIM};
+    }}
+
+    /* ── бейджи ── */
+    QLabel#badgeMatch {{
+        background-color: {GREEN};
+        color: #ffffff;
+        border-radius: 4px;
+        padding: 4px 14px;
+        font-weight: 700;
+        font-size: 15px;
+    }}
+    QLabel#badgeUnknown {{
+        background-color: {RED};
+        color: #ffffff;
+        border-radius: 4px;
+        padding: 4px 14px;
+        font-weight: 700;
+        font-size: 15px;
+    }}
+
+    /* ── скроллбар ── */
+    QScrollBar:vertical {{
+        background: {BG_WINDOW};
+        width: 8px;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {BORDER};
+        border-radius: 4px;
+        min-height: 24px;
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+        height: 0px;
+    }}
+
+    /* ── статусбар ── */
+    QStatusBar {{
+        background-color: {BG_CARD};
+        border-top: 1px solid {BORDER};
+        color: {TEXT_DIM};
         font-size: 12px;
+        padding: 2px 8px;
     }}
 
-    /* ── image preview ────────────────────────────────── */
-    #imagePreview {{
-        background: {BG_INPUT};
-        border: 1px solid {BORDER};
-        border-radius: 6px;
-        min-height: 120px;
-    }}
-
-    /* ── tooltip ──────────────────────────────────────── */
+    /* ── тултипы ── */
     QToolTip {{
-        background: {BG_CARD};
-        color: {TEXT};
+        background-color: {BG_CARD};
         border: 1px solid {BORDER};
+        color: {TEXT};
         padding: 4px 8px;
-        font-size: 12px;
     }}
     """
