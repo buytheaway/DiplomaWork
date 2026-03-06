@@ -91,6 +91,11 @@ def create_extractor(settings: object) -> EmbeddingExtractor:
         return DummyEmbeddingExtractor(dim=dim)
 
     if backend == "torch":
+        import logging
+        logging.getLogger(__name__).warning(
+            "torch backend is experimental — trained checkpoints may produce poor embeddings. "
+            "Consider insightface or onnx for production use."
+        )
         from app.services.embeddings.torch_extractor import TorchEmbeddingExtractor
 
         return TorchEmbeddingExtractor(settings)

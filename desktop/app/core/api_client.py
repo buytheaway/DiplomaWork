@@ -1,5 +1,3 @@
-"""HTTP client for the backend REST API."""
-
 from __future__ import annotations
 
 import json
@@ -23,6 +21,11 @@ class ApiError(Exception):
 def format_api_error(exc: Exception) -> str:
     if isinstance(exc, ApiError):
         return str(exc)
+    # Бэкенд не запущен или недоступен
+    if isinstance(exc, requests.ConnectionError):
+        return "Не удалось подключиться к бэкенду. Убедитесь что сервер запущен."
+    if isinstance(exc, requests.Timeout):
+        return "Таймаут запроса к бэкенду."
     if isinstance(exc, requests.RequestException) and exc.response is not None:
         body = exc.response.text or ""
         return f"HTTP {exc.response.status_code}: {body}".strip()
@@ -42,6 +45,9 @@ class ApiClient:
         return response.json()
 
     # ── enroll / search ──────────────────────────────────────────────────
+
+    def health(self) -> dict[str, Any]:
+        return self._request_json("GET", f"{self.base_url}/v1/health")
 
     def enroll(self, image_path: str, label: str | None) -> dict[str, Any]:
         with open(image_path, "rb") as handle:

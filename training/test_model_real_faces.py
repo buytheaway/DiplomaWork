@@ -49,7 +49,7 @@ class TestModelOnRealFaces:
 
     @pytest.fixture
     def transform(self, config):
-        """Get image transform"""
+        #Get image transform
         input_size = int(config["data"]["input_size"])
         return transforms.Compose(
             [

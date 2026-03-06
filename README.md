@@ -1,90 +1,96 @@
 # Fast Biometric Face Search
 
-Production‑quality diploma prototype for face‑based biometric search.
+Дипломный проект — быстрый биометрический поиск по лицу.
 
-**Stack:** FastAPI · PostgreSQL / SQLite · FAISS · PySide6 desktop client.
+**Стек:** FastAPI · PostgreSQL / SQLite · FAISS · PySide6 desktop client.
 
-**Key design principle:** the ML model is a *plugin*. The system boots and works
-with `EMBEDDING_BACKEND=dummy` (zero ML dependencies). Swap to a real model
-(InsightFace / PyTorch / ONNX) by changing one env var + installing the lib.
+**Ключевой принцип:** ML-модель — это *плагин*. Система работает
+с `EMBEDDING_BACKEND=dummy` (без ML-зависимостей). Для настоящего
+распознавания — переключить на `insightface` или `onnx` через `.env`.
 
 ---
 
-## Quick start (Docker — recommended)
+## Быстрый старт (Windows, без Docker)
+
+### 1. Backend
 
 ```powershell
-# 1. Clone & enter repo
-Set-Location "C:\Users\mukha\OneDrive\Documents\GitHub\DiplomaWork"
+cd backend
+pip install -r requirements.txt
 
-# 2. Create .env (defaults to EMBEDDING_BACKEND=dummy)
+# Создать .env в корне репозитория (по умолчанию — dummy бэкенд):
+Copy-Item ..\.env.example ..\.env -Force
+
+# Запустить:
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Проверка: `http://127.0.0.1:8000/v1/health`
+Swagger: `http://127.0.0.1:8000/docs`
+
+### 2. Desktop
+
+В отдельном терминале:
+
+```powershell
+cd desktop
+pip install -r requirements.txt
+python -m app.main
+```
+
+При запуске в строке состояния отобразится статус подключения к бэкенду.
+
+Если бэкенд недоступен — десктоп покажет предупреждение, но запустится.
+
+### 3. Тесты
+
+```powershell
+cd backend
+$env:TESTING = "true"
+$env:DATABASE_URL = "sqlite+pysqlite:///:memory:"
+python -m pytest tests/ -v
+```
+
+---
+
+## Docker
+
+```powershell
+# Скопировать конфиг
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 
-# 3. Start services
+# Запуск с dummy бэкендом
 docker compose up --build
-```
 
-Health check:
-
-```powershell
-Invoke-WebRequest http://localhost:8000/v1/health
-# or: curl http://127.0.0.1:8000/v1/health
-```
-
-Swagger docs: <http://localhost:8000/docs>
-
-### With a real ML model (Docker)
-
-```powershell
-# Option A: install ALL ML deps
-docker compose build --build-arg INSTALL_ML=true
-
-# Option B: install only a specific backend
-docker compose build --build-arg ML_BACKEND=insightface   # or: onnx
-
-# Update .env:  EMBEDDING_BACKEND=insightface  (or onnx)
+# С ML-зависимостями (insightface)
+docker compose build --build-arg ML_BACKEND=insightface
+# Поменять в .env: EMBEDDING_BACKEND=insightface
 docker compose up
 ```
 
 ---
 
-## Run on Windows (local, no Docker)
+## Ручное тестирование (curl / PowerShell)
 
-### Backend
-
-```powershell
-cd backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-# Optional ML: pip install -r requirements-ml.txt
-
-# Create .env in repo root (SQLite for local dev):
-Copy-Item ..\.env.local.example ..\.env -Force
-# Or just use dummy backend:
-Copy-Item ..\.env.example ..\.env -Force
-
-alembic upgrade head
-uvicorn app.main:app --reload
-```
-
-### Desktop client
+Все запросы к `http://127.0.0.1:8000`.
 
 ```powershell
-cd desktop
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python -m app.main
-```
+# Health check
+Invoke-WebRequest http://127.0.0.1:8000/v1/health | Select-Object -Expand Content
 
-### Run tests
+# Enroll (зарегистрировать лицо)
+curl -X POST http://127.0.0.1:8000/v1/enroll -F "file=@photo.jpg" -F "label=Alice"
 
-```powershell
-cd backend
-pip install pytest httpx
-$env:TESTING = "true"
-$env:DATABASE_URL = "sqlite+pysqlite:///:memory:"
-pytest tests/ -v
+# Search (поиск по лицу)
+curl -X POST "http://127.0.0.1:8000/v1/search?k=5" -F "file=@photo.jpg"
+
+# Persons (получить / удалить)
+curl http://127.0.0.1:8000/v1/persons/<person_id>
+curl -X DELETE http://127.0.0.1:8000/v1/persons/<person_id>
+
+# Index stats / rebuild
+curl http://127.0.0.1:8000/v1/index/stats
+curl -X POST http://127.0.0.1:8000/v1/index/rebuild -H "Content-Type: application/json" -d '{"index_type":"hnsw","params":{"m":32,"ef_construction":200,"ef_search":64}}'
 ```
 
 ---
@@ -93,41 +99,62 @@ pytest tests/ -v
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/health` | Health check → `{"status": "ok", "embedding_backend": "…"}` |
-| POST | `/v1/enroll` | Enroll face (multipart `file` + optional `label`) |
-| POST | `/v1/search?k=5` | Search face (multipart `file`) |
-| GET | `/v1/persons/{id}` | Get person + embeddings |
-| DELETE | `/v1/persons/{id}` | Soft‑delete person |
-| GET | `/v1/index/stats` | Index statistics |
-| POST | `/v1/index/rebuild` | Rebuild index (`index_type` + `params`) |
+| GET | `/v1/health` | `{"status": "ok", "embedding_backend": "…"}` |
+| POST | `/v1/enroll` | Multipart `file` + optional `label` |
+| POST | `/v1/search?k=5` | Multipart `file` → результаты + decision |
+| GET | `/v1/persons/{id}` | Получить person + embeddings |
+| DELETE | `/v1/persons/{id}` | Soft-delete |
+| GET | `/v1/index/stats` | Статистика индекса |
+| POST | `/v1/index/rebuild` | `{"index_type": "hnsw", "params": {…}}` |
 
 ---
 
 ## Embedding backends
 
-| Backend | Env value | Extra deps | Notes |
-|---------|-----------|------------|-------|
-| Dummy | `dummy` | none | Fixed vector `[1,0,…]` — tests & demo |
-| InsightFace | `insightface` | `insightface onnxruntime` | buffalo_l full pipeline (detect → align → embed) |
-| Torch | `torch` | `torch opencv-python-headless` | Custom IR‑ResNet from training/ |
-| ONNX | `onnx` | `onnxruntime opencv-python-headless` | SCRFD face detector + ArcFace embedder (BYO `.onnx` files) |
+| Backend | Значение `.env` | Доп. зависимости | Статус |
+|---------|-----------------|-----------------|--------|
+| Dummy | `dummy` | нет | Всегда работает (тесты, демо) |
+| InsightFace | `insightface` | `insightface onnxruntime` | Рабочий, buffalo_l |
+| ONNX | `onnx` | `onnxruntime opencv-python-headless` | Рабочий, нужны `.onnx` файлы |
+| Torch | `torch` | `torch opencv-python-headless` | **Экспериментальный** — чекпоинты недообучены |
 
-Set in `.env`:
+### Настройка InsightFace
 
 ```env
-EMBEDDING_BACKEND=dummy
+EMBEDDING_BACKEND=insightface
 EMBEDDING_DIM=512
+MODEL_NAME=buffalo_l
+```
 
-# ONNX backend — point to your .onnx model files:
+Модели скачаются автоматически при первом запуске.
+
+### Настройка ONNX
+
+```env
+EMBEDDING_BACKEND=onnx
 ONNX_DETECTOR_PATH=models/scrfd_10g_bnkps.onnx
 ONNX_EMBEDDER_PATH=models/w600k_r50.onnx
 ```
 
+Файлы `.onnx` нужно скачать и положить по указанным путям.
+
+### Настройка Torch (экспериментальный)
+
+```env
+EMBEDDING_BACKEND=torch
+TORCH_MODEL_PATH=../training/outputs/checkpoint_epoch_005.pth
+TORCH_DEVICE=cpu
+DETECTION_BACKEND=opencv
+```
+
+> ⚠ Текущие чекпоинты дали 0% val accuracy за 5 эпох.
+> Для реального использования нужно переобучить модель на большем датасете.
+
 ---
 
-## Match threshold & decision
+## Match threshold и decision
 
-The `/v1/search` response includes automatic match decision:
+Ответ `/v1/search` включает автоматическое решение:
 
 ```json
 {
@@ -141,73 +168,46 @@ The `/v1/search` response includes automatic match decision:
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `best_score` | Highest similarity score (inner product) from results, or `null` |
-| `threshold_used` | Current `MATCH_THRESHOLD` value |
-| `best_match_above_threshold` | `true` if `best_score >= threshold` |
-| `decision` | `"match"` or `"unknown"` |
+- `decision: "match"` — best_score >= MATCH_THRESHOLD
+- `decision: "unknown"` — ниже порога или пустые результаты
 
-Configure the threshold:
+Настройка порога:
 
 ```env
-MATCH_THRESHOLD=0.4   # default; raise for stricter matching
+MATCH_THRESHOLD=0.4
 ```
+
+Чем выше — тем строже. Если порог слишком высокий, система будет возвращать `unknown` даже для правильных лиц.
 
 ---
 
-## Scripts
+## Важные ограничения
 
-```powershell
-# Compute embeddings from dataset (uses EMBEDDING_BACKEND from .env)
-python scripts/compute_embeddings.py --dataset path/to/dataset --batch-size 500
-
-# Rebuild FAISS index from DB
-python scripts/build_index.py --index-type hnsw
-
-# Benchmark search
-python scripts/benchmark_search.py --dataset path/to/dataset --k 5 --samples 100
-```
+- **Оригинальные фото не хранятся.** Только эмбеддинги + метаданные.
+- **Strict single-face policy:** 0 лиц → 422, больше 1 лица → 422.
+- **Индекс в памяти**, сохраняется на диск при изменениях.
 
 ---
 
-## Project structure
+## Структура проекта
 
 ```
 ├── backend/
 │   ├── app/
-│   │   ├── api/          # routes + schemas (stable v1 contract)
+│   │   ├── api/          # routes + schemas
 │   │   ├── core/         # config, logging
 │   │   ├── db/           # models, session, migrations
 │   │   └── services/
-│   │       ├── embeddings/   # interface + dummy/insightface/torch/onnx
+│   │       ├── embeddings/   # dummy / insightface / torch / onnx
 │   │       ├── face/         # detector, align, quality
-│   │       ├── index/        # VectorIndex ABC + FAISS adapter
+│   │       ├── index/        # FAISS adapter
 │   │       └── storage/      # SQLAlchemy repositories
 │   ├── tests/
-│   ├── requirements.txt      # core (no ML)
-│   └── requirements-ml.txt   # optional ML libs
-├── desktop/              # PySide6 GUI client
-├── scripts/              # batch processing CLIs
-├── tools/run_all.ps1     # one‑click Docker startup
-├── .env.example          # default config (dummy backend)
-├── docker-compose.yml
-└── pyproject.toml        # black/ruff/pytest config
+│   ├── requirements.txt
+│   └── requirements-ml-*.txt
+├── desktop/              # PySide6 GUI
+├── training/             # IR-ResNet обучение (экспериментальное)
+├── scripts/              # CLI утилиты
+├── .env.example          # дефолтный конфиг
+└── docker-compose.yml
 ```
-
----
-
-## Architecture: Ports & Adapters
-
-* **EmbeddingExtractor** (port) — `extract_embedding(bytes) → ndarray`
-* **VectorIndex** (port) — `add / search / save / load / stats / train`
-* **Repositories** (port) — `PersonRepo`, `EmbeddingRepo`, `IndexSnapshotRepo`
-
-Adapters are selected at startup via config. Backend code never imports ML
-libraries directly — only through the extractor factory.
-
-## Notes
-
-* Original face images are **never stored**. Only embeddings + metadata.
-* Strict single‑face policy by default (0 or >1 faces → HTTP 422).
-* Index is in‑memory for speed; persisted to disk + DB snapshot on changes.

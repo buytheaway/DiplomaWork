@@ -46,7 +46,7 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         if not weights_path.exists():
             raise FileNotFoundError(f"Torch model not found: {weights_path}")
 
-        state = torch.load(str(weights_path), map_location=self.device)
+        state = torch.load(str(weights_path), map_location=self.device, weights_only=False)
         state_dict = state.get("state_dict", state)
         self.model.load_state_dict(state_dict, strict=False)
 
