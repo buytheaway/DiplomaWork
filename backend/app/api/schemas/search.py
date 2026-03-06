@@ -17,3 +17,7 @@ class SearchResponse(BaseModel):
     k: int
     model: str
     results: list[SearchResult]
+    threshold_used: float = 0.0
+    best_score: float | None = None
+    best_match_above_threshold: bool = False
+    decision: str = "unknown"  # "match" | "unknown"

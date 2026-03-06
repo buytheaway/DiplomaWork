@@ -17,7 +17,9 @@ import pytest
 def test_health(client):
     resp = client.get("/v1/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert "embedding_backend" in body
 
 
 # ── enroll ───────────────────────────────────────────────────────────────────
@@ -69,6 +71,9 @@ def test_search_empty_index(client):
     body = resp.json()
     assert body["results"] == []
     assert body["k"] == 3
+    assert body["decision"] == "unknown"
+    assert body["best_score"] is None
+    assert body["threshold_used"] > 0
 
 
 def test_search_after_enroll(client):
@@ -85,9 +90,15 @@ def test_search_after_enroll(client):
         files={"file": ("q.jpg", b"\x89PNG_query", "image/jpeg")},
     )
     assert resp.status_code == 200
-    results = resp.json()["results"]
+    body = resp.json()
+    results = body["results"]
     assert len(results) >= 1
     assert results[0]["label"] == "Bob"
+    # threshold / decision fields present
+    assert body["best_score"] is not None
+    assert isinstance(body["threshold_used"], float)
+    assert body["decision"] in ("match", "unknown")
+    assert isinstance(body["best_match_above_threshold"], bool)
 
 
 def test_search_empty_file_returns_400(client):
@@ -155,6 +166,7 @@ def test_index_stats(client):
     assert "index_type" in body
     assert "embeddings_count" in body
     assert "is_trained" in body
+    assert "embedding_backend" in body
 
 
 def test_index_stats_after_enroll(client):

@@ -29,6 +29,7 @@ class StatsTab(QWidget):
         self._op_start: float = 0.0
         self.stats_view = QTextEdit()
         self.stats_view.setReadOnly(True)
+        self.backend_label = QLabel("Embedding backend: -")
         self.last_rebuild_params: dict[str, int] | None = None
         self.last_rebuild_label = QLabel("Last rebuild params: -")
         self.latency_label = QLabel("Latency: - ms")
@@ -51,6 +52,7 @@ class StatsTab(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(self.refresh_btn, alignment=Qt.AlignLeft)
         layout.addWidget(self.latency_label, alignment=Qt.AlignLeft)
+        layout.addWidget(self.backend_label, alignment=Qt.AlignLeft)
         layout.addWidget(self.stats_view)
         layout.addWidget(self.last_rebuild_label)
         layout.addWidget(QLabel("Rebuild index (HNSW)"))
@@ -74,6 +76,9 @@ class StatsTab(QWidget):
         self.rebuild_btn.setEnabled(True)
         latency_ms = (time.perf_counter() - self._op_start) * 1000
         self.latency_label.setText(f"Latency: {latency_ms:.2f} ms")
+        if isinstance(result, dict):
+            backend = result.get("embedding_backend", "-")
+            self.backend_label.setText(f"Embedding backend: {backend}")
         self.stats_view.setPlainText(json.dumps(result, indent=2, default=str))
 
     def _on_error(self, error: str) -> None:

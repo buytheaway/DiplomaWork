@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_extractor, get_index_manager
 from app.api.schemas.search import SearchResponse, SearchResult
+from app.core.config import settings
 from app.services.embeddings.interface import (
     EmbeddingExtractor,
     InvalidImageError,
@@ -37,8 +38,15 @@ async def search(
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Embedding extraction failed") from exc
 
+    threshold = settings.match_threshold
+
     if index_manager.count() == 0:
-        return SearchResponse(k=k, model=extractor.model_name, results=[])
+        return SearchResponse(
+            k=k,
+            model=extractor.model_name,
+            results=[],
+            threshold_used=threshold,
+        )
 
     matches = index_manager.search(embedding, k=k)
     embedding_ids = [match.embedding_id for match in matches]
@@ -62,4 +70,15 @@ async def search(
             )
         )
 
-    return SearchResponse(k=k, model=extractor.model_name, results=results)
+    best_score: float | None = results[0].score if results else None
+    above = best_score is not None and best_score >= threshold
+
+    return SearchResponse(
+        k=k,
+        model=extractor.model_name,
+        results=results,
+        threshold_used=threshold,
+        best_score=best_score,
+        best_match_above_threshold=above,
+        decision="match" if above else "unknown",
+    )

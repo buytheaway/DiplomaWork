@@ -14,11 +14,19 @@ RUN apt-get update \
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# ── ML dependencies (optional — set INSTALL_ML=true to include) ──────
+# ── ML dependencies (optional) ───────────────────────────────────────
+#   INSTALL_ML=false   → no ML deps (dummy backend only)
+#   INSTALL_ML=true    → install ALL ML deps
+#   ML_BACKEND=insightface | onnx → install only that backend's deps
 ARG INSTALL_ML=false
-COPY requirements-ml.txt /app/requirements-ml.txt
+ARG ML_BACKEND=none
+COPY requirements-ml.txt requirements-ml-insightface.txt requirements-ml-onnx.txt /app/
 RUN if [ "$INSTALL_ML" = "true" ]; then \
       pip install --no-cache-dir -r /app/requirements-ml.txt; \
+    elif [ "$ML_BACKEND" = "insightface" ]; then \
+      pip install --no-cache-dir -r /app/requirements-ml-insightface.txt; \
+    elif [ "$ML_BACKEND" = "onnx" ]; then \
+      pip install --no-cache-dir -r /app/requirements-ml-onnx.txt; \
     fi
 
 COPY app /app/app

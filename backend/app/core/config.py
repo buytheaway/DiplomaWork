@@ -49,11 +49,14 @@ class Settings(BaseSettings):
     torch_use_fp16: bool = Field(False, alias="TORCH_USE_FP16")
     torch_norm_embeddings: bool = Field(True, alias="TORCH_NORM_EMBEDDINGS")
 
-    # onnx-specific (skeleton — no real weights shipped)
-    onnx_model_path: str = Field("", alias="ONNX_MODEL_PATH")
+    # onnx-specific
+    onnx_model_path: str = Field("", alias="ONNX_MODEL_PATH")  # legacy single-model
+    onnx_detector_path: str = Field("", alias="ONNX_DETECTOR_PATH")
+    onnx_embedder_path: str = Field("", alias="ONNX_EMBEDDER_PATH")
 
     # ── face detection / quality ─────────────────────────────────────────
     strict_single_face: bool = Field(True, alias="STRICT_SINGLE_FACE")
+    match_threshold: float = Field(0.4, alias="MATCH_THRESHOLD")
     detection_backend: Literal["insightface", "opencv", "none"] = Field(
         "none", alias="DETECTION_BACKEND"
     )

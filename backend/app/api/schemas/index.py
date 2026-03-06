@@ -17,6 +17,7 @@ class IndexStatsResponse(BaseModel):
     is_trained: bool
     file_path: str
     last_snapshot_id: str | None
+    embedding_backend: str | None = None
 
 
 class RebuildIndexRequest(BaseModel):

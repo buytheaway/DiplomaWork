@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_index_manager
 from app.api.schemas.index import IndexStatsResponse, RebuildIndexRequest
+from app.core.config import settings
 from app.services.index.index_manager import IndexManager
 
 router = APIRouter()
@@ -14,7 +15,9 @@ router = APIRouter()
 
 @router.get("/index/stats", response_model=IndexStatsResponse)
 def index_stats(index_manager: IndexManager = Depends(get_index_manager)) -> IndexStatsResponse:
-    return IndexStatsResponse(**index_manager.stats())
+    data = index_manager.stats()
+    data["embedding_backend"] = settings.embedding_backend
+    return IndexStatsResponse(**data)
 
 
 @router.post("/index/rebuild", response_model=IndexStatsResponse)

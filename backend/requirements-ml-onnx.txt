@@ -1,0 +1,3 @@
+# ML extras for EMBEDDING_BACKEND=onnx (SCRFD + ArcFace)
+onnxruntime
+opencv-python-headless

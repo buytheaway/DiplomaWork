@@ -66,11 +66,17 @@ class SearchTab(QWidget):
         self.table.setSortingEnabled(True)
 
         self.latency_label = QLabel("Latency: - ms")
+        self.decision_label = QLabel("Decision: -")
+        self.threshold_label = QLabel("Threshold: -")
+        self.best_score_label = QLabel("Best score: -")
 
         layout = QVBoxLayout()
         layout.addLayout(form)
         layout.addWidget(self.search_btn, alignment=Qt.AlignLeft)
         layout.addWidget(self.latency_label, alignment=Qt.AlignLeft)
+        layout.addWidget(self.decision_label, alignment=Qt.AlignLeft)
+        layout.addWidget(self.threshold_label, alignment=Qt.AlignLeft)
+        layout.addWidget(self.best_score_label, alignment=Qt.AlignLeft)
         layout.addWidget(self.table)
         self.setLayout(layout)
 
@@ -96,7 +102,28 @@ class SearchTab(QWidget):
         self.search_btn.setEnabled(True)
         latency_ms = (time.perf_counter() - self._search_start) * 1000
         self.latency_label.setText(f"Latency: {latency_ms:.2f} ms")
-        results = response.get("results", []) if isinstance(response, dict) else []
+
+        if isinstance(response, dict):
+            results = response.get("results", [])
+            decision = response.get("decision", "unknown")
+            threshold = response.get("threshold_used")
+            best_score = response.get("best_score")
+        else:
+            results, decision, threshold, best_score = [], "unknown", None, None
+
+        # Decision label
+        dec_text = "MATCH" if decision == "match" else "UNKNOWN"
+        color = "green" if decision == "match" else "red"
+        self.decision_label.setText(f'Decision: <b style="color:{color}">{dec_text}</b>')
+        self.decision_label.setTextFormat(Qt.RichText)
+
+        self.threshold_label.setText(
+            f"Threshold: {threshold:.4f}" if threshold is not None else "Threshold: -"
+        )
+        self.best_score_label.setText(
+            f"Best score: {best_score:.4f}" if best_score is not None else "Best score: -"
+        )
+
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(results))
         for row_idx, result in enumerate(results):

@@ -14,7 +14,9 @@ def test_health_endpoint():
     with TestClient(create_app()) as client:
         response = client.get("/v1/health")
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        body = response.json()
+        assert body["status"] == "ok"
+        assert "embedding_backend" in body
 
 
 def test_testing_uses_dummy_extractor():

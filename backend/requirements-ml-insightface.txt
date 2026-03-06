@@ -1,0 +1,4 @@
+# ML extras for EMBEDDING_BACKEND=insightface
+insightface
+onnxruntime
+opencv-python-headless

@@ -35,9 +35,13 @@ Swagger docs: <http://localhost:8000/docs>
 ### With a real ML model (Docker)
 
 ```powershell
-# Rebuild with ML deps
+# Option A: install ALL ML deps
 docker compose build --build-arg INSTALL_ML=true
-# Update .env:  EMBEDDING_BACKEND=insightface  (or torch / onnx)
+
+# Option B: install only a specific backend
+docker compose build --build-arg ML_BACKEND=insightface   # or: onnx
+
+# Update .env:  EMBEDDING_BACKEND=insightface  (or onnx)
 docker compose up
 ```
 
@@ -89,7 +93,7 @@ pytest tests/ -v
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/health` | Health check → `{"status": "ok"}` |
+| GET | `/v1/health` | Health check → `{"status": "ok", "embedding_backend": "…"}` |
 | POST | `/v1/enroll` | Enroll face (multipart `file` + optional `label`) |
 | POST | `/v1/search?k=5` | Search face (multipart `file`) |
 | GET | `/v1/persons/{id}` | Get person + embeddings |
@@ -104,15 +108,50 @@ pytest tests/ -v
 | Backend | Env value | Extra deps | Notes |
 |---------|-----------|------------|-------|
 | Dummy | `dummy` | none | Fixed vector `[1,0,…]` — tests & demo |
-| InsightFace | `insightface` | `insightface onnxruntime` | Full pipeline |
-| Torch | `torch` | `torch opencv-python-headless` | Custom IR‑ResNet |
-| ONNX | `onnx` | `onnxruntime opencv-python-headless` | Skeleton — BYO model |
+| InsightFace | `insightface` | `insightface onnxruntime` | buffalo_l full pipeline (detect → align → embed) |
+| Torch | `torch` | `torch opencv-python-headless` | Custom IR‑ResNet from training/ |
+| ONNX | `onnx` | `onnxruntime opencv-python-headless` | SCRFD face detector + ArcFace embedder (BYO `.onnx` files) |
 
 Set in `.env`:
 
 ```env
 EMBEDDING_BACKEND=dummy
 EMBEDDING_DIM=512
+
+# ONNX backend — point to your .onnx model files:
+ONNX_DETECTOR_PATH=models/scrfd_10g_bnkps.onnx
+ONNX_EMBEDDER_PATH=models/w600k_r50.onnx
+```
+
+---
+
+## Match threshold & decision
+
+The `/v1/search` response includes automatic match decision:
+
+```json
+{
+  "k": 5,
+  "model": "insightface_buffalo_l",
+  "results": [ … ],
+  "best_score": 0.87,
+  "threshold_used": 0.4,
+  "best_match_above_threshold": true,
+  "decision": "match"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `best_score` | Highest similarity score (inner product) from results, or `null` |
+| `threshold_used` | Current `MATCH_THRESHOLD` value |
+| `best_match_above_threshold` | `true` if `best_score >= threshold` |
+| `decision` | `"match"` or `"unknown"` |
+
+Configure the threshold:
+
+```env
+MATCH_THRESHOLD=0.4   # default; raise for stricter matching
 ```
 
 ---
