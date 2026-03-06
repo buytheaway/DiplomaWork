@@ -1,3 +1,4 @@
+# Главная вкладка — поиск лица по индексу
 from __future__ import annotations
 
 import time
@@ -45,34 +46,33 @@ class SearchTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 20, 20, 20)
+        root.setContentsMargins(24, 24, 24, 24)
         root.setSpacing(16)
 
-        # ── верхняя часть: форма + превью ─────────────────────────────
+        # --- верхний ряд: форма + превью ---
         top_row = QHBoxLayout()
         top_row.setSpacing(16)
 
-        # Форма
-        input_card = Card()
-        form = input_card.body()
-        form.addWidget(SectionHeading("Search by face"))
-        form.addWidget(DimLabel("Upload an image to find matching identities"))
-        form.addSpacing(6)
+        # Форма поиска
+        form_card = Card()
+        fc = form_card.body()
+        fc.addWidget(SectionHeading("Face query"))
 
-        form.addWidget(DimLabel("Image file"))
-        path_row = QHBoxLayout()
-        path_row.setSpacing(8)
+        fc.addWidget(DimLabel("Image file"))
+        file_row = QHBoxLayout()
+        file_row.setSpacing(8)
         self.image_path = QLineEdit()
-        self.image_path.setPlaceholderText("Choose an image\u2026")
+        self.image_path.setPlaceholderText("Select a face image...")
         self.image_path.setReadOnly(True)
+        file_row.addWidget(self.image_path, 1)
+
         browse_btn = QPushButton("Browse")
         browse_btn.setFixedWidth(80)
         browse_btn.clicked.connect(self._browse)
-        path_row.addWidget(self.image_path, 1)
-        path_row.addWidget(browse_btn)
-        form.addLayout(path_row)
+        file_row.addWidget(browse_btn)
+        fc.addLayout(file_row)
 
-        form.addSpacing(4)
+        fc.addSpacing(6)
 
         k_row = QHBoxLayout()
         k_row.setSpacing(8)
@@ -83,92 +83,84 @@ class SearchTab(QWidget):
         self.k_input.setFixedWidth(70)
         k_row.addWidget(self.k_input)
         k_row.addStretch()
-        form.addLayout(k_row)
+        fc.addLayout(k_row)
 
-        form.addSpacing(8)
+        fc.addSpacing(10)
 
         self.search_btn = QPushButton("Search")
         self.search_btn.setObjectName("primary")
-        self.search_btn.setFixedWidth(140)
+        self.search_btn.setFixedHeight(36)
         self.search_btn.clicked.connect(self._search)
-        form.addWidget(self.search_btn)
+        fc.addWidget(self.search_btn)
+        fc.addStretch()
 
-        form.addStretch()
+        top_row.addWidget(form_card, 3)
 
-        # Превью
+        # Превью + результат
+        right_col = QVBoxLayout()
+        right_col.setSpacing(12)
+
         preview_card = Card()
-        pv = preview_card.body()
-        pv.setAlignment(Qt.AlignCenter)
-        pv.addWidget(DimLabel("Preview"))
-        self.preview = ImagePreview()
-        pv.addWidget(self.preview, alignment=Qt.AlignCenter)
-        pv.addStretch()
+        pc = preview_card.body()
+        pc.setAlignment(Qt.AlignCenter)
+        self.preview = ImagePreview(160)
+        pc.addWidget(self.preview, 0, Qt.AlignCenter)
+        right_col.addWidget(preview_card)
 
-        top_row.addWidget(input_card, 3)
-        top_row.addWidget(preview_card, 1)
+        # Бейдж решения
+        self.decision_badge = QLabel("—")
+        self.decision_badge.setAlignment(Qt.AlignCenter)
+        self.decision_badge.setFixedHeight(32)
+        self.decision_badge.setStyleSheet(
+            "background-color: #2c2d31; color: #8b8d93; border-radius: 4px;"
+            " font-weight: 700; font-size: 15px;"
+        )
+        right_col.addWidget(self.decision_badge)
+
+        right_col.addStretch()
+        top_row.addLayout(right_col, 1)
 
         root.addLayout(top_row)
 
-        # ── decision summary ──────────────────────────────────────────
+        # --- сводка ---
         summary_card = Card()
         sc = summary_card.body()
-        sc.setSpacing(6)
-
-        summary_header_row = QHBoxLayout()
-        summary_header_row.addWidget(SectionHeading("Result"))
-        self.decision_badge = QLabel("-")
-        self.decision_badge.setAlignment(Qt.AlignCenter)
-        self.decision_badge.setFixedHeight(30)
-        self.decision_badge.setMinimumWidth(100)
-        summary_header_row.addStretch()
-        summary_header_row.addWidget(self.decision_badge)
-        sc.addLayout(summary_header_row)
-
-        # info rows
-        info_row_lay = QHBoxLayout()
-        info_row_lay.setSpacing(24)
-
-        self.info_best_score = InfoRow("Best score")
+        info_row = QHBoxLayout()
+        info_row.setSpacing(24)
+        self.info_score = InfoRow("Best score")
         self.info_threshold = InfoRow("Threshold")
         self.info_latency = InfoRow("Latency")
         self.info_matches = InfoRow("Matches")
-
-        info_row_lay.addWidget(self.info_best_score)
-        info_row_lay.addWidget(self.info_threshold)
-        info_row_lay.addWidget(self.info_latency)
-        info_row_lay.addWidget(self.info_matches)
-
-        sc.addLayout(info_row_lay)
+        for w in [self.info_score, self.info_threshold, self.info_latency, self.info_matches]:
+            info_row.addWidget(w)
+        info_row.addStretch()
+        sc.addLayout(info_row)
         root.addWidget(summary_card)
 
-        # ── results table ─────────────────────────────────────────────
-        table_card = Card()
-        tc = table_card.body()
-        tc.addWidget(SectionHeading("Top matches"))
+        # --- таблица результатов ---
+        results_card = Card()
+        rc = results_card.body()
+        rc.addWidget(SectionHeading("Search results"))
 
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Person ID", "Label", "Score", "Distance"])
         self.table.setSortingEnabled(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
-        # растягиваем колонки
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
         hdr = self.table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.Stretch)
         hdr.setSectionResizeMode(1, QHeaderView.Stretch)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         hdr.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.table.setMinimumHeight(140)
+        rc.addWidget(self.table)
 
-        tc.addWidget(self.table)
-        root.addWidget(table_card, 1)
-
-    # ── actions ──────────────────────────────────────────────────────
+        root.addWidget(results_card, 1)
 
     def _browse(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Select image", "",
-            "Images (*.jpg *.jpeg *.png *.bmp *.webp);;All files (*)",
+            "Images (*.jpg *.jpeg *.png *.bmp *.webp);;All files (*.*)",
         )
         if path:
             self.image_path.setText(path)
@@ -199,23 +191,19 @@ class SearchTab(QWidget):
         else:
             results, decision, threshold, best_score = [], "unknown", None, None
 
-        # Decision badge — самый заметный элемент
+        # Бейдж
         if decision == "match":
-            self.decision_badge.setText("  MATCH  ")
+            self.decision_badge.setText("MATCH")
             self.decision_badge.setObjectName("badgeMatch")
         else:
-            self.decision_badge.setText("  UNKNOWN  ")
+            self.decision_badge.setText("UNKNOWN")
             self.decision_badge.setObjectName("badgeUnknown")
-        # force restyle after setObjectName
+        # обновить стили после смены objectName
         self.decision_badge.style().unpolish(self.decision_badge)
         self.decision_badge.style().polish(self.decision_badge)
 
-        self.info_best_score.set_value(
-            f"{best_score:.4f}" if best_score is not None else "-"
-        )
-        self.info_threshold.set_value(
-            f"{threshold:.4f}" if threshold is not None else "-"
-        )
+        self.info_score.set_value(f"{best_score:.4f}" if best_score is not None else "—")
+        self.info_threshold.set_value(f"{threshold:.4f}" if threshold is not None else "—")
         self.info_latency.set_value(f"{latency_ms:.0f} ms")
         self.info_matches.set_value(str(len(results)))
 
@@ -228,8 +216,7 @@ class SearchTab(QWidget):
             self.table.setItem(row_idx, 2, NumericItem(result.get("score")))
             self.table.setItem(row_idx, 3, NumericItem(result.get("distance")))
         self.table.setSortingEnabled(True)
-        if self.table.rowCount() > 0:
-            self.table.sortItems(2, Qt.DescendingOrder)
+        self.table.sortItems(2, Qt.DescendingOrder)
 
     def _on_error(self, error: str) -> None:
         self.search_btn.setEnabled(True)

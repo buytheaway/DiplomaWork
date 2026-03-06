@@ -24,11 +24,11 @@ class EmbeddingSummary(BaseModel):
 
 
 class PersonListItem(BaseModel):
-    # Легкая модель для списка (without embeddings)
     id: str
     label: str | None
     status: str
     created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -10,7 +10,6 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-# Кастомный тип — UUID на Postgres, CHAR(32) на SQLite
 from app.db.types import GUID, JSONType
 
 revision = "0001_init"

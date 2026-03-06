@@ -81,14 +81,14 @@ class ApiClient:
 
     # ── persons ──────────────────────────────────────────────────────────
 
+    def get_person(self, person_id: str) -> dict[str, Any]:
+        return self._request_json("GET", f"{self.base_url}/v1/persons/{person_id}")
+
     def list_persons(self, limit: int = 200, offset: int = 0) -> list[dict[str, Any]]:
         return self._request_json(
             "GET", f"{self.base_url}/v1/persons",
             params={"limit": limit, "offset": offset},
         )
-
-    def get_person(self, person_id: str) -> dict[str, Any]:
-        return self._request_json("GET", f"{self.base_url}/v1/persons/{person_id}")
 
     def delete_person(self, person_id: str) -> dict[str, Any]:
         return self._request_json("DELETE", f"{self.base_url}/v1/persons/{person_id}")
