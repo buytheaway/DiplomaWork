@@ -112,6 +112,35 @@ def test_search_empty_file_returns_400(client):
 # ── persons ──────────────────────────────────────────────────────────────────
 
 
+def test_list_persons_empty(client):
+    resp = client.get("/v1/persons")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_list_persons_after_enroll(client):
+    client.post(
+        "/v1/enroll",
+        files={"file": ("a.jpg", b"\x89PNG_alice", "image/jpeg")},
+        data={"label": "Alice"},
+    )
+    client.post(
+        "/v1/enroll",
+        files={"file": ("b.jpg", b"\x89PNG_bob", "image/jpeg")},
+        data={"label": "Bob"},
+    )
+    resp = client.get("/v1/persons")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 2
+    labels = {p["label"] for p in body}
+    assert labels == {"Alice", "Bob"}
+    # каждый элемент — облегчённая модель без embeddings
+    for p in body:
+        assert "id" in p
+        assert "embeddings" not in p
+
+
 def test_get_person_after_enroll(client):
     enroll_resp = client.post(
         "/v1/enroll",

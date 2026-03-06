@@ -102,6 +102,7 @@ curl -X POST http://127.0.0.1:8000/v1/index/rebuild -H "Content-Type: applicatio
 | GET | `/v1/health` | `{"status": "ok", "embedding_backend": "…"}` |
 | POST | `/v1/enroll` | Multipart `file` + optional `label` |
 | POST | `/v1/search?k=5` | Multipart `file` → результаты + decision |
+| GET | `/v1/persons` | Список активных persons (limit/offset) |
 | GET | `/v1/persons/{id}` | Получить person + embeddings |
 | DELETE | `/v1/persons/{id}` | Soft-delete |
 | GET | `/v1/index/stats` | Статистика индекса |
@@ -186,6 +187,69 @@ MATCH_THRESHOLD=0.4
 - **Оригинальные фото не хранятся.** Только эмбеддинги + метаданные.
 - **Strict single-face policy:** 0 лиц → 422, больше 1 лица → 422.
 - **Индекс в памяти**, сохраняется на диск при изменениях.
+
+---
+
+## Архитектура
+
+```mermaid
+flowchart TD
+    subgraph Desktop ["PySide6 Desktop Client"]
+        UI["Enroll / Search / Persons / Stats"]
+    end
+
+    subgraph Backend ["FastAPI Backend"]
+        API["REST API v1"]
+        EMB{"Embedding\nExtractor"}
+        IDX["FAISS Index\n(flat / hnsw / ivfpq)"]
+        DB[("SQLite / PostgreSQL")]
+    end
+
+    subgraph Backends ["ML Backends (plugin)"]
+        DUMMY["dummy"]
+        IF["InsightFace\nbuffalo_l"]
+        ONNX["ONNX\nSCRFD + ArcFace"]
+        TORCH["Torch\nIR-ResNet"]
+    end
+
+    UI -- "HTTP / JSON" --> API
+    API --> EMB
+    EMB --> DUMMY
+    EMB --> IF
+    EMB --> ONNX
+    EMB --> TORCH
+    API --> IDX
+    API --> DB
+    IDX -- "vector search" --> DB
+```
+
+**Поток данных:**
+
+```mermaid
+sequenceDiagram
+    participant C as Desktop
+    participant A as API
+    participant E as Extractor
+    participant I as FAISS Index
+    participant D as Database
+
+    Note over C,D: Enroll
+    C->>A: POST /v1/enroll (image)
+    A->>E: extract(image_bytes)
+    E-->>A: embedding[512]
+    A->>D: save Person + Embedding
+    A->>I: add(embedding_id, vector)
+    A-->>C: {person_id, label}
+
+    Note over C,D: Search
+    C->>A: POST /v1/search (image, k=5)
+    A->>E: extract(image_bytes)
+    E-->>A: embedding[512]
+    A->>I: search(vector, k)
+    I-->>A: top-k (ids, distances)
+    A->>D: resolve persons
+    A-->>C: {results, decision, best_score}
+```
 
 ---
 

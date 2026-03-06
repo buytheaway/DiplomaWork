@@ -29,6 +29,16 @@ class PersonRepo:
         stmt = select(Person).where(Person.id == person_id).options(joinedload(Person.embeddings))
         return self.db.execute(stmt).scalars().first()
 
+    def list_active(self, limit: int = 200, offset: int = 0) -> list[Person]:
+        stmt = (
+            select(Person)
+            .where(Person.status == "active")
+            .order_by(Person.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
     def soft_delete(self, person_id: str) -> bool:
         person = self.get(person_id)
         if person is None:

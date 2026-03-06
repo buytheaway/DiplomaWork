@@ -12,9 +12,8 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 import numpy as np
-from fastapi import FastAPI, Request, Security
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import APIKeyHeader
 from starlette.responses import JSONResponse
 
 from app.api.routes import enroll, health, index, persons, search
@@ -79,7 +78,6 @@ def create_app() -> FastAPI:
 
     # ── API-key guard (skips /health and /docs) ──────────────────────
     if settings.api_key:
-        _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
         @app.middleware("http")
         async def _check_api_key(request: Request, call_next):
