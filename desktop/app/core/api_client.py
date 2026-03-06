@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from typing import Any
 
@@ -19,6 +21,11 @@ class ApiError(Exception):
 def format_api_error(exc: Exception) -> str:
     if isinstance(exc, ApiError):
         return str(exc)
+    # Бэкенд не запущен или недоступен
+    if isinstance(exc, requests.ConnectionError):
+        return "Не удалось подключиться к бэкенду. Убедитесь что сервер запущен."
+    if isinstance(exc, requests.Timeout):
+        return "Таймаут запроса к бэкенду."
     if isinstance(exc, requests.RequestException) and exc.response is not None:
         body = exc.response.text or ""
         return f"HTTP {exc.response.status_code}: {body}".strip()
@@ -37,6 +44,11 @@ class ApiClient:
             raise ApiError(response.status_code, response.text)
         return response.json()
 
+    # ── enroll / search ──────────────────────────────────────────────────
+
+    def health(self) -> dict[str, Any]:
+        return self._request_json("GET", f"{self.base_url}/v1/health")
+
     def enroll(self, image_path: str, label: str | None) -> dict[str, Any]:
         with open(image_path, "rb") as handle:
             files = {"file": handle}
@@ -53,6 +65,8 @@ class ApiClient:
                 files=files,
             )
 
+    # ── index ────────────────────────────────────────────────────────────
+
     def index_stats(self) -> dict[str, Any]:
         return self._request_json("GET", f"{self.base_url}/v1/index/stats")
 
@@ -64,3 +78,17 @@ class ApiClient:
             data=json.dumps(payload),
             headers={"Content-Type": "application/json"},
         )
+
+    # ── persons ──────────────────────────────────────────────────────────
+
+    def list_persons(self, limit: int = 200, offset: int = 0) -> list[dict[str, Any]]:
+        return self._request_json(
+            "GET", f"{self.base_url}/v1/persons",
+            params={"limit": limit, "offset": offset},
+        )
+
+    def get_person(self, person_id: str) -> dict[str, Any]:
+        return self._request_json("GET", f"{self.base_url}/v1/persons/{person_id}")
+
+    def delete_person(self, person_id: str) -> dict[str, Any]:
+        return self._request_json("DELETE", f"{self.base_url}/v1/persons/{person_id}")

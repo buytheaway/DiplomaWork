@@ -1,10 +1,19 @@
+"""Database ORM models."""
+
+from __future__ import annotations
+
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from app.db.types import GUID, JSONType
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import LargeBinary
+
+
+def _utcnow() -> datetime:
+    """Timezone-aware UTC timestamp (replaces deprecated ``datetime.utcnow``)."""
+    return datetime.now(timezone.utc)
 
 
 class Base(DeclarativeBase):
@@ -14,12 +23,12 @@ class Base(DeclarativeBase):
 class Person(Base):
     __tablename__ = "persons"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     label: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
     embeddings: Mapped[list["Embedding"]] = relationship(
@@ -30,12 +39,12 @@ class Person(Base):
 class Embedding(Base):
     __tablename__ = "embeddings"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    person_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("persons.id"))
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    person_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("persons.id"))
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     dim: Mapped[int] = mapped_column(nullable=False)
     vector: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     person: Mapped[Person] = relationship(back_populates="embeddings")
@@ -44,9 +53,9 @@ class Embedding(Base):
 class IndexSnapshot(Base):
     __tablename__ = "index_snapshots"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     index_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    params: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    params: Mapped[dict] = mapped_column(JSONType(), nullable=False)
     path: Mapped[str] = mapped_column(Text, nullable=False)
     embeddings_count: Mapped[int] = mapped_column(nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)

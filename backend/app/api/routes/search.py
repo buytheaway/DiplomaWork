@@ -1,14 +1,20 @@
+"""Face search endpoint."""
+
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_extractor, get_index_manager
 from app.api.schemas.search import SearchResponse, SearchResult
+from app.core.config import settings
 from app.services.embeddings.interface import (
     EmbeddingExtractor,
     InvalidImageError,
     MultipleFacesDetectedError,
     NoFaceDetectedError,
 )
+from app.services.index.index_manager import IndexManager
 from app.services.storage.repositories import EmbeddingRepo
 
 router = APIRouter()
@@ -20,7 +26,7 @@ async def search(
     k: int = Query(5, ge=1, le=100),
     db: Session = Depends(get_db),
     extractor: EmbeddingExtractor = Depends(get_extractor),
-    index_manager=Depends(get_index_manager),
+    index_manager: IndexManager = Depends(get_index_manager),
 ) -> SearchResponse:
     image_bytes = await file.read()
     try:
@@ -32,8 +38,15 @@ async def search(
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Embedding extraction failed") from exc
 
+    threshold = settings.match_threshold
+
     if index_manager.count() == 0:
-        return SearchResponse(k=k, model=extractor.model_name, results=[])
+        return SearchResponse(
+            k=k,
+            model=extractor.model_name,
+            results=[],
+            threshold_used=threshold,
+        )
 
     matches = index_manager.search(embedding, k=k)
     embedding_ids = [match.embedding_id for match in matches]
@@ -45,7 +58,7 @@ async def search(
     results: list[SearchResult] = []
     for match in matches:
         row = lookup.get(match.embedding_id)
-        if row is None:
+        if row is None or row.person is None:
             continue
         results.append(
             SearchResult(
@@ -57,4 +70,15 @@ async def search(
             )
         )
 
-    return SearchResponse(k=k, model=extractor.model_name, results=results)
+    best_score: float | None = results[0].score if results else None
+    above = best_score is not None and best_score >= threshold
+
+    return SearchResponse(
+        k=k,
+        model=extractor.model_name,
+        results=results,
+        threshold_used=threshold,
+        best_score=best_score,
+        best_match_above_threshold=above,
+        decision="match" if above else "unknown",
+    )

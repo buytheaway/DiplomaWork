@@ -1,3 +1,11 @@
+"""Orchestrates the FAISS vector index lifecycle.
+
+Responsibilities:
+* Create / load / save / rebuild the index.
+* Expose ``add_embedding``, ``search``, ``stats``, ``count``.
+* Persist snapshots to disk and record metadata in DB.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -21,8 +29,11 @@ class IndexMatch:
 
 
 class IndexManager:
+    """High‑level wrapper around :class:`FaissIndex`."""
+
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self.dim = settings.embedding_dim
         self.index_path = Path(settings.index_path)
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
         self._index = self._create_index(
@@ -32,6 +43,8 @@ class IndexManager:
         self._params = self.default_params_for(settings.index_type)
         self.last_snapshot_id: str | None = None
         self._logger = logging.getLogger(__name__)
+
+    # ── helpers ───────────────────────────────────────────────────────────
 
     def default_params_for(self, index_type: str) -> dict[str, Any]:
         if index_type == "hnsw":
@@ -49,7 +62,14 @@ class IndexManager:
         return {}
 
     def _create_index(self, index_type: str, params: dict[str, Any]) -> FaissIndex:
-        return FaissIndex(dim=512, index_type=index_type, params=params, seed=self.settings.seed)
+        return FaissIndex(
+            dim=self.dim,
+            index_type=index_type,
+            params=params,
+            seed=self.settings.seed,
+        )
+
+    # ── snapshot management ──────────────────────────────────────────────
 
     def load_latest_snapshot(self, db: Session) -> bool:
         repo = IndexSnapshotRepo(db)
@@ -61,20 +81,15 @@ class IndexManager:
             self._params = snapshot.params
             self.last_snapshot_id = str(snapshot.id)
             self._logger.info(
-                "Loaded index snapshot id=%s type=%s path=%s",
+                "Loaded index snapshot id=%s type=%s count=%d path=%s",
                 snapshot.id,
                 snapshot.index_type,
+                self._index.count(),
                 snapshot.path,
             )
             return True
+        self._logger.info("No index snapshot found — starting with empty index")
         return False
-
-    def add_embedding(self, embedding_id: str, vector: np.ndarray) -> int:
-        return self._index.add_embedding(embedding_id, vector)
-
-    def search(self, vector: np.ndarray, k: int) -> list[IndexMatch]:
-        results = self._index.search(vector, k)
-        return [IndexMatch(r.embedding_id, r.score, r.distance) for r in results]
 
     def save_snapshot(self, db: Session) -> None:
         self._index.save(str(self.index_path))
@@ -86,6 +101,15 @@ class IndexManager:
             embeddings_count=self._index.count(),
         )
         self.last_snapshot_id = str(snapshot.id)
+
+    # ── core operations ──────────────────────────────────────────────────
+
+    def add_embedding(self, embedding_id: str, vector: np.ndarray) -> int:
+        return self._index.add_embedding(embedding_id, vector)
+
+    def search(self, vector: np.ndarray, k: int) -> list[IndexMatch]:
+        results = self._index.search(vector, k)
+        return [IndexMatch(r.embedding_id, r.score, r.distance) for r in results]
 
     def rebuild(self, db: Session, index_type: str, params: dict[str, Any]) -> dict[str, Any]:
         if not params:

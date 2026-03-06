@@ -1,3 +1,14 @@
+"""Batch‑compute face embeddings from a dataset folder and insert into the DB.
+
+Dataset format::
+
+    dataset/<identity>/*.(jpg|jpeg|png|bmp)
+
+Uses whichever ``EMBEDDING_BACKEND`` is configured (dummy / insightface / torch / onnx).
+"""
+
+from __future__ import annotations
+
 import argparse
 import logging
 import random
@@ -8,32 +19,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT / "backend"))
 
-from app.core.config import get_settings
-from app.db.session import SessionLocal
-from app.services.embeddings.insightface_extractor import InsightFaceEmbeddingExtractor
-from app.services.embeddings.interface import (
+from app.core.config import get_settings  # noqa: E402
+from app.db.session import SessionLocal  # noqa: E402
+from app.services.embeddings.interface import (  # noqa: E402
     InvalidImageError,
     MultipleFacesDetectedError,
     NoFaceDetectedError,
+    create_extractor,
 )
-from app.services.storage.repositories import EmbeddingRepo, PersonRepo
+from app.services.storage.repositories import EmbeddingRepo, PersonRepo  # noqa: E402
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
 
-CONFIG = """
-DATASET FORMAT:
-  dataset/<identity>/*.(jpg|jpeg|png|bmp)
-
-FACE POLICY:
-  strict single-face only (skip 0 faces or >1 faces)
-"""
-
 
 def iter_dataset(dataset_dir: Path) -> Iterator[tuple[str, Path]]:
+    """Yield ``(label, image_path)`` in deterministic order."""
     for person_dir in sorted(p for p in dataset_dir.iterdir() if p.is_dir()):
         label = person_dir.name
         files = sorted(
-            (p for p in person_dir.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS),
+            (
+                p
+                for p in person_dir.iterdir()
+                if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+            ),
             key=lambda p: p.name,
         )
         for file_path in files:
@@ -46,24 +54,23 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--log-every", type=int, default=5000)
     parser.add_argument("--max-images", type=int, default=None)
-    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=None, help="Override SEED from config")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logger = logging.getLogger("compute_embeddings")
-    logger.info(CONFIG.strip())
-
-    if args.workers != 1:
-        raise SystemExit("workers>1 is not supported yet; use --workers 1")
 
     settings = get_settings()
-    random.seed(settings.seed)
+    seed = args.seed if args.seed is not None else settings.seed
+    random.seed(seed)
+    logger.info("deterministic_order=true  seed=%d  backend=%s", seed, settings.embedding_backend)
 
-    extractor = InsightFaceEmbeddingExtractor(settings)
+    extractor = create_extractor(settings)
+    logger.info("Extractor: model=%s  dim=%d", extractor.model_name, extractor.dim)
+
     dataset_dir = Path(args.dataset)
     if not dataset_dir.exists():
         raise SystemExit(f"Dataset path not found: {dataset_dir}")
-    logger.info("deterministic_order=true seed=%d", settings.seed)
 
     processed = 0
     inserted = 0
@@ -121,19 +128,20 @@ def main() -> None:
                 skipped_invalid += 1
             except Exception:
                 other_errors += 1
+                logger.exception("Unexpected error processing %s", img_path)
 
             if pending_inserts >= args.batch_size:
                 try:
                     commit_batch()
                 except Exception as exc:
                     other_errors += pending_inserts
-                    logger.exception("Batch commit failed, rolling back: %s", exc)
+                    logger.exception("Batch commit failed: %s", exc)
                     raise SystemExit(1) from exc
 
             if processed % args.log_every == 0:
                 logger.info(
-                    "processed=%d inserted=%d skipped_no_face=%d skipped_multi_face=%d "
-                    "skipped_invalid=%d other_errors=%d",
+                    "processed=%d inserted=%d skipped_no_face=%d skipped_multi=%d "
+                    "skipped_invalid=%d errors=%d",
                     processed,
                     inserted,
                     skipped_no_face,
@@ -146,12 +154,12 @@ def main() -> None:
             commit_batch()
         except Exception as exc:
             other_errors += pending_inserts
-            logger.exception("Final batch commit failed, rolling back: %s", exc)
+            logger.exception("Final batch commit failed: %s", exc)
             raise SystemExit(1) from exc
 
     logger.info(
-        "done processed=%d inserted=%d skipped_no_face=%d skipped_multi_face=%d "
-        "skipped_invalid=%d other_errors=%d",
+        "DONE processed=%d inserted=%d skipped_no_face=%d skipped_multi=%d "
+        "skipped_invalid=%d errors=%d",
         processed,
         inserted,
         skipped_no_face,

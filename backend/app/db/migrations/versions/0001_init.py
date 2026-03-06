@@ -10,6 +10,9 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
+# Кастомный тип — UUID на Postgres, CHAR(32) на SQLite
+from app.db.types import GUID, JSONType
+
 revision = "0001_init"
 down_revision = None
 branch_labels = None
@@ -19,7 +22,7 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "persons",
-        sa.Column("id", sa.UUID(), primary_key=True, nullable=False),
+        sa.Column("id", GUID(), primary_key=True, nullable=False),
         sa.Column("label", sa.Text(), nullable=True),
         sa.Column("status", sa.String(length=20), nullable=False, server_default="active"),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -27,8 +30,8 @@ def upgrade() -> None:
     )
     op.create_table(
         "embeddings",
-        sa.Column("id", sa.UUID(), primary_key=True, nullable=False),
-        sa.Column("person_id", sa.UUID(), sa.ForeignKey("persons.id")),
+        sa.Column("id", GUID(), primary_key=True, nullable=False),
+        sa.Column("person_id", GUID(), sa.ForeignKey("persons.id")),
         sa.Column("model", sa.String(length=100), nullable=False),
         sa.Column("dim", sa.Integer(), nullable=False),
         sa.Column("vector", sa.LargeBinary(), nullable=False),
@@ -37,9 +40,9 @@ def upgrade() -> None:
     )
     op.create_table(
         "index_snapshots",
-        sa.Column("id", sa.UUID(), primary_key=True, nullable=False),
+        sa.Column("id", GUID(), primary_key=True, nullable=False),
         sa.Column("index_type", sa.String(length=20), nullable=False),
-        sa.Column("params", sa.JSON(), nullable=False),
+        sa.Column("params", JSONType(), nullable=False),
         sa.Column("path", sa.Text(), nullable=False),
         sa.Column("embeddings_count", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
