@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from app.core.config import Settings
+from app.core.config import BASE_DIR, Settings
 from app.services.embeddings.interface import (
     EmbeddingExtractor,
     InvalidImageError,
@@ -83,6 +83,19 @@ def _ensure_ort():
             "onnxruntime is required for the ONNX embedding backend. "
             "Install with: pip install onnxruntime"
         ) from exc
+
+
+def _preferred_ort_providers(ort_module) -> list[str]:
+    """Pick only providers that exist in the current runtime.
+
+    This avoids noisy warnings when the CPU-only wheel is installed on Windows.
+    """
+    available = set(ort_module.get_available_providers())
+    ordered = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    providers = [provider for provider in ordered if provider in available]
+    if providers:
+        return providers
+    return ["CPUExecutionProvider"]
 
 
 def _umeyama(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
@@ -186,6 +199,8 @@ class _SCRFDDetector:
         self._session = session
         self._input_name = session.get_inputs()[0].name
         self._input_size = input_size  # (w, h)
+        self._input_mean = 127.5
+        self._input_std = 128.0
 
         n_out = len(session.get_outputs())
         n_strides = len(self._FPN_STRIDES)
@@ -213,15 +228,27 @@ class _SCRFDDetector:
         cv2 = _ensure_cv2()
         iw, ih = self._input_size
         h, w = image.shape[:2]
-        scale = min(iw / w, ih / h)
-        nw, nh = int(w * scale), int(h * scale)
-        resized = cv2.resize(image, (nw, nh))
+        image_ratio = float(h) / float(w)
+        model_ratio = float(ih) / float(iw)
+        if image_ratio > model_ratio:
+            nh = ih
+            nw = int(nh / image_ratio)
+        else:
+            nw = iw
+            nh = int(nw * image_ratio)
 
-        blob = np.zeros((ih, iw, 3), dtype=np.float32)
-        blob[:nh, :nw, :] = resized.astype(np.float32)
-        blob = (blob - 127.5) / 128.0
-        blob = blob.transpose(2, 0, 1)[np.newaxis, ...]
-        return blob.astype(np.float32), scale, (0, 0)
+        det_scale = float(nh) / float(h)
+        resized = cv2.resize(image, (nw, nh))
+        det_img = np.zeros((ih, iw, 3), dtype=np.uint8)
+        det_img[:nh, :nw, :] = resized
+        blob = cv2.dnn.blobFromImage(
+            det_img,
+            1.0 / self._input_std,
+            self._input_size,
+            (self._input_mean, self._input_mean, self._input_mean),
+            swapRB=True,
+        )
+        return blob.astype(np.float32), det_scale, (nw, nh)
 
     def _postprocess(self, outputs, scale, score_thresh, iou_thresh):
         fmc = len(self._FPN_STRIDES)
@@ -230,23 +257,19 @@ class _SCRFDDetector:
         all_kps: list[np.ndarray] = []
 
         for idx, stride in enumerate(self._FPN_STRIDES):
-            scores = outputs[idx].squeeze()
-            bbox_deltas = outputs[idx + fmc].squeeze()
+            scores = outputs[idx].reshape(-1)
+            bbox_deltas = outputs[idx + fmc].reshape(-1, 4) * stride
 
             fh = self._input_size[1] // stride
             fw = self._input_size[0] // stride
             anchors = self._make_anchors(fw, fh, stride)
-
-            if scores.ndim == 1:
-                mask = scores > score_thresh
-            else:
-                mask = scores.ravel() > score_thresh
+            mask = scores >= score_thresh
 
             if not mask.any():
                 continue
 
-            scores_filt = scores.ravel()[mask]
-            bbox_filt = bbox_deltas.reshape(-1, 4)[mask]
+            scores_filt = scores[mask]
+            bbox_filt = bbox_deltas[mask]
             anchors_filt = anchors[mask]
 
             boxes = self._distance2bbox(anchors_filt, bbox_filt)
@@ -254,7 +277,7 @@ class _SCRFDDetector:
             all_boxes.append(boxes)
 
             if self._has_kps:
-                kps_deltas = outputs[idx + fmc * 2].squeeze().reshape(-1, 10)
+                kps_deltas = outputs[idx + fmc * 2].reshape(-1, 10) * stride
                 kps_filt = kps_deltas[mask]
                 kps = self._distance2kps(anchors_filt, kps_filt)
                 all_kps.append(kps)
@@ -269,6 +292,12 @@ class _SCRFDDetector:
         boxes = np.vstack(all_boxes)
         scores_arr = np.concatenate(all_scores)
         kps_arr = np.vstack(all_kps) if all_kps else None
+
+        order = scores_arr.argsort()[::-1]
+        boxes = boxes[order]
+        scores_arr = scores_arr[order]
+        if kps_arr is not None:
+            kps_arr = kps_arr[order]
 
         keep = _nms(boxes, scores_arr, iou_thresh)
         boxes = boxes[keep]
@@ -286,10 +315,9 @@ class _SCRFDDetector:
 
     @staticmethod
     def _make_anchors(fw: int, fh: int, stride: int) -> np.ndarray:
-        y, x = np.mgrid[:fh, :fw]
-        centres = np.stack([x, y], axis=-1).astype(np.float32).reshape(-1, 2)
-        centres = (centres + 0.5) * stride
-        centres = np.tile(centres, (1, 2)).reshape(-1, 2)
+        centres = np.stack(np.mgrid[:fh, :fw][::-1], axis=-1).astype(np.float32)
+        centres = (centres * stride).reshape(-1, 2)
+        centres = np.stack([centres, centres], axis=1).reshape(-1, 2)
         return centres
 
     @staticmethod
@@ -357,6 +385,10 @@ class OnnxEmbeddingExtractor(EmbeddingExtractor):
 
         det_path = Path(settings.onnx_detector_path)
         emb_path = Path(settings.onnx_embedder_path)
+        if not det_path.is_absolute():
+            det_path = BASE_DIR / det_path
+        if not emb_path.is_absolute():
+            emb_path = BASE_DIR / emb_path
 
         if not det_path.exists():
             raise FileNotFoundError(
@@ -369,7 +401,7 @@ class OnnxEmbeddingExtractor(EmbeddingExtractor):
                 "Set ONNX_EMBEDDER_PATH to a valid ArcFace .onnx file."
             )
 
-        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        providers = _preferred_ort_providers(ort)
         det_session = ort.InferenceSession(str(det_path), providers=providers)
         emb_session = ort.InferenceSession(str(emb_path), providers=providers)
 

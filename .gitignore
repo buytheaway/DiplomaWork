@@ -50,3 +50,5 @@ training/checkpoints/
 *.pt
 *.onnx
 training/config.eval.yaml
+tmp/
+backend/tmp/
