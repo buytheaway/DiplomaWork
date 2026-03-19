@@ -6,9 +6,8 @@ session and wires up the full FastAPI app with ``DummyEmbeddingExtractor``.
 
 from __future__ import annotations
 
-import io
-
-import pytest
+from app.services.embeddings.interface import DummyEmbeddingExtractor, FaceEmbedding
+from app.services.runtime.pipeline_registry import PipelineRuntime
 
 
 # ── health ───────────────────────────────────────────────────────────────────
@@ -20,6 +19,7 @@ def test_health(client):
     body = resp.json()
     assert body["status"] == "ok"
     assert "embedding_backend" in body
+    assert "available_pipelines" in body
 
 
 # ── enroll ───────────────────────────────────────────────────────────────────
@@ -47,6 +47,31 @@ def test_enroll_without_label(client):
     )
     assert resp.status_code == 200
     assert resp.json()["model"] == "dummy"
+
+
+def test_enroll_custom_pipeline(client):
+    resp = client.post(
+        "/v1/enroll",
+        files={"file": ("face.jpg", b"\x89PNG_custom_image_bytes", "image/jpeg")},
+        data={"label": "CustomAlice", "pipeline": "custom"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["pipeline"] == "custom"
+    assert body["model"] == "dummy_custom"
+
+
+def test_enroll_both_pipelines(client):
+    resp = client.post(
+        "/v1/enroll",
+        files={"file": ("face.jpg", b"\x89PNG_both_image_bytes", "image/jpeg")},
+        data={"label": "DualAlice", "pipeline": "both"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["pipeline"] == "both"
+    assert len(body["enrollments"]) == 2
+    assert {item["pipeline"] for item in body["enrollments"]} == {"pretrained", "custom"}
 
 
 def test_enroll_empty_file_returns_400(client):
@@ -99,6 +124,88 @@ def test_search_after_enroll(client):
     assert isinstance(body["threshold_used"], float)
     assert body["decision"] in ("match", "unknown")
     assert isinstance(body["best_match_above_threshold"], bool)
+
+
+def test_search_custom_pipeline_after_custom_enroll(client):
+    client.post(
+        "/v1/enroll",
+        files={"file": ("a.jpg", b"\x89PNG_custom_enroll", "image/jpeg")},
+        data={"label": "BobCustom", "pipeline": "custom"},
+    )
+    resp = client.post(
+        "/v1/search",
+        params={"k": 1, "pipeline": "custom"},
+        files={"file": ("q.jpg", b"\x89PNG_query_custom", "image/jpeg")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["pipeline"] == "custom"
+    assert body["model"] == "dummy_custom"
+    assert len(body["results"]) >= 1
+    assert body["results"][0]["pipeline"] == "custom"
+
+
+def test_search_compare(client):
+    client.post(
+        "/v1/enroll",
+        files={"file": ("a.jpg", b"\x89PNG_dual_compare", "image/jpeg")},
+        data={"label": "CompareBob", "pipeline": "both"},
+    )
+    resp = client.post(
+        "/v1/search/compare",
+        params={"k": 2},
+        files={"file": ("q.jpg", b"\x89PNG_query_compare", "image/jpeg")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "comparisons" in body
+    assert len(body["comparisons"]) == 2
+    assert {item["pipeline"] for item in body["comparisons"]} == {"pretrained", "custom"}
+
+
+class _MultiFaceDummyExtractor(DummyEmbeddingExtractor):
+    def __init__(self, dim: int = 512) -> None:
+        super().__init__(dim=dim)
+        self.model_name = "dummy_multiface"
+
+    def extract_embeddings(self, image_bytes: bytes) -> list[FaceEmbedding]:
+        base = self.extract_embedding(image_bytes)
+        second = base.copy()
+        second[0] = 0.6
+        second[1] = 0.8
+        return [
+            FaceEmbedding(embedding=base, detection_score=0.99, bbox=(0.0, 0.0, 16.0, 16.0)),
+            FaceEmbedding(embedding=second, detection_score=0.95, bbox=(24.0, 8.0, 40.0, 24.0)),
+        ]
+
+
+def test_search_multiple_faces_returns_face_indexes(client):
+    client.post(
+        "/v1/enroll",
+        files={"file": ("a.jpg", b"\x89PNG_multi_enroll", "image/jpeg")},
+        data={"label": "MultiBob"},
+    )
+
+    registry = client.app.state.pipeline_registry
+    runtime = registry.get("pretrained")
+    registry._pipelines["pretrained"] = PipelineRuntime(
+        key="pretrained",
+        backend=runtime.backend,
+        extractor=_MultiFaceDummyExtractor(),
+        index_manager=runtime.index_manager,
+    )
+    client.app.state.extractor = registry.get("pretrained").extractor
+
+    resp = client.post(
+        "/v1/search",
+        params={"k": 1, "pipeline": "pretrained"},
+        files={"file": ("q.jpg", b"\x89PNG_multi_query", "image/jpeg")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["faces_detected"] == 2
+    assert {item["face_index"] for item in body["results"]} == {0, 1}
+    assert all("detection_score" in item for item in body["results"])
 
 
 def test_search_empty_file_returns_400(client):
@@ -188,6 +295,7 @@ def test_index_stats(client):
     assert "embeddings_count" in body
     assert "is_trained" in body
     assert "embedding_backend" in body
+    assert "pipeline" in body
 
 
 def test_index_stats_after_enroll(client):

@@ -2,71 +2,113 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, get_extractor, get_index_manager
-from app.api.schemas.enroll import EnrollResponse
+from app.api.deps import get_db, get_pipeline_registry
+from app.api.schemas.enroll import EnrollmentItem, EnrollResponse
 from app.core.config import settings
 from app.services.embeddings.interface import (
-    EmbeddingExtractor,
     InvalidImageError,
     MultipleFacesDetectedError,
     NoFaceDetectedError,
 )
-from app.services.index.index_manager import IndexManager
+from app.services.runtime.pipeline_registry import PipelineRegistry
 from app.services.storage.repositories import EmbeddingRepo, PersonRepo
 
 router = APIRouter()
+
+
+def _raise_face_error(exc: Exception) -> None:
+    if isinstance(exc, InvalidImageError):
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if isinstance(exc, (NoFaceDetectedError, MultipleFacesDetectedError)):
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    raise HTTPException(status_code=500, detail="Embedding extraction failed") from exc
 
 
 @router.post("/enroll", response_model=EnrollResponse)
 async def enroll(
     file: UploadFile = File(...),
     label: str | None = Form(None),
+    pipeline: Literal["pretrained", "custom", "both"] | None = Form(None),
     db: Session = Depends(get_db),
-    extractor: EmbeddingExtractor = Depends(get_extractor),
-    index_manager: IndexManager = Depends(get_index_manager),
+    registry: PipelineRegistry = Depends(get_pipeline_registry),
 ) -> EnrollResponse:
     image_bytes = await file.read()
     try:
-        embedding = extractor.extract_embedding(image_bytes)
-    except InvalidImageError as exc:
+        runtimes = registry.resolve_enroll(pipeline)
+    except KeyError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except (NoFaceDetectedError, MultipleFacesDetectedError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail="Embedding extraction failed") from exc
+
+    computed: list[tuple[str, str, object]] = []
+    for runtime in runtimes:
+        try:
+            embedding = runtime.extractor.extract_embedding(image_bytes)
+        except Exception as exc:  # noqa: BLE001
+            _raise_face_error(exc)
+        computed.append((runtime.key, runtime.extractor.model_name, embedding))
 
     person_repo = PersonRepo(db)
     embedding_repo = EmbeddingRepo(db)
 
     person = person_repo.create(label=label)
     db.flush()
-    embedding_row = embedding_repo.create(
-        person_id=person.id,
-        model=extractor.model_name,
-        dim=int(embedding.shape[0]),
-        vector=embedding.tobytes(),
-    )
+
+    saved_rows: list[tuple[str, str, object, object]] = []
+    for runtime_key, model_name, embedding in computed:
+        embedding_row = embedding_repo.create(
+            person_id=person.id,
+            model=model_name,
+            dim=int(embedding.shape[0]),
+            vector=embedding.tobytes(),
+        )
+        db.flush()
+        saved_rows.append((runtime_key, model_name, embedding, embedding_row))
+
     db.commit()
     db.refresh(person)
-    db.refresh(embedding_row)
+    for _, _, _, embedding_row in saved_rows:
+        db.refresh(embedding_row)
 
     try:
-        index_manager.add_embedding(str(embedding_row.id), embedding)
+        touched_pipelines: set[str] = set()
+        for runtime_key, _model_name, embedding, embedding_row in saved_rows:
+            runtime = registry.get(runtime_key)  # type: ignore[arg-type]
+            runtime.index_manager.add_embedding(str(embedding_row.id), embedding)
+            touched_pipelines.add(runtime_key)
+
         if settings.auto_save_index:
-            index_manager.save_snapshot(db)
+            for runtime_key in touched_pipelines:
+                runtime = registry.get(runtime_key)  # type: ignore[arg-type]
+                runtime.index_manager.save_snapshot(db)
             db.commit()
-    except Exception as exc:
-        embedding_repo.deactivate(embedding_row.id)
+    except Exception as exc:  # pragma: no cover - exercised in real runtime
+        for _, _, _, embedding_row in saved_rows:
+            embedding_repo.deactivate(embedding_row.id)
         db.commit()
         raise HTTPException(status_code=500, detail="Index update failed") from exc
 
+    enrollments = [
+        EnrollmentItem(
+            pipeline=runtime_key,
+            embedding_id=str(embedding_row.id),
+            model=model_name,
+            dim=int(embedding.shape[0]),
+        )
+        for runtime_key, model_name, embedding, embedding_row in saved_rows
+    ]
+    first = enrollments[0]
+
     return EnrollResponse(
         person_id=str(person.id),
-        embedding_id=str(embedding_row.id),
+        embedding_id=first.embedding_id,
         faces_detected=1,
-        model=extractor.model_name,
-        dim=int(embedding.shape[0]),
+        model=first.model,
+        dim=first.dim,
+        pipeline=pipeline or registry.default_pipeline,
+        available_pipelines=registry.available_pipelines(),
+        enrollments=enrollments,
     )

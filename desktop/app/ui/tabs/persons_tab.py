@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from app.core.api_client import ApiClient
 from app.core.worker import ApiWorker
+from app.ui.dialogs import show_error, show_warning
 from app.ui.widgets import Card, DimLabel, SectionHeading
 
 
@@ -155,7 +156,7 @@ class PersonsTab(QWidget):
     def _person_id(self) -> str | None:
         pid = self.person_id_input.text().strip()
         if not pid:
-            QMessageBox.warning(self, "Missing", "Enter a Person ID")
+            show_warning(self, "Missing", "Enter a Person ID")
             return None
         return pid
 
@@ -167,17 +168,23 @@ class PersonsTab(QWidget):
         self._worker.start()
 
     def _on_detail_success(self, result: object) -> None:
+        self.get_btn.setEnabled(True)
+        self.delete_btn.setEnabled(True)
         self.status_label.setText("")
         self.response_view.setPlainText(json.dumps(result, indent=2, default=str))
 
     def _on_error(self, error: str) -> None:
         self.refresh_btn.setEnabled(True)
+        self.get_btn.setEnabled(True)
+        self.delete_btn.setEnabled(True)
         self.status_label.setText("")
-        QMessageBox.critical(self, "Error", error)
+        show_error(self, "Error", error)
 
     def _get_person(self) -> None:
         pid = self._person_id()
         if pid:
+            self.get_btn.setEnabled(False)
+            self.delete_btn.setEnabled(False)
             self._run(self.api.get_person, pid)
 
     def _delete_person(self) -> None:
@@ -190,6 +197,8 @@ class PersonsTab(QWidget):
             QMessageBox.Yes | QMessageBox.No,
         )
         if confirm == QMessageBox.Yes:
+            self.get_btn.setEnabled(False)
+            self.delete_btn.setEnabled(False)
             self._run(self.api.delete_person, pid)
 
     def showEvent(self, event) -> None:

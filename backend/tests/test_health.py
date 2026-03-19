@@ -17,6 +17,8 @@ def test_health_endpoint():
         body = response.json()
         assert body["status"] == "ok"
         assert "embedding_backend" in body
+        assert "available_pipelines" in body
+        assert "pretrained" in body["available_pipelines"]
 
 
 def test_testing_uses_dummy_extractor():

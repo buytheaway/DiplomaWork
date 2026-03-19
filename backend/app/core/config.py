@@ -37,6 +37,17 @@ class Settings(BaseSettings):
         "dummy", alias="EMBEDDING_BACKEND"
     )
     embedding_dim: int = Field(512, alias="EMBEDDING_DIM")
+    default_pipeline: Literal["pretrained", "custom"] = Field(
+        "pretrained", alias="DEFAULT_PIPELINE"
+    )
+    enable_pretrained_pipeline: bool = Field(True, alias="ENABLE_PRETRAINED_PIPELINE")
+    enable_custom_pipeline: bool = Field(True, alias="ENABLE_CUSTOM_PIPELINE")
+    pretrained_backend: Literal["dummy", "insightface", "torch", "onnx"] = Field(
+        "onnx", alias="PRETRAINED_BACKEND"
+    )
+    custom_backend: Literal["dummy", "insightface", "torch", "onnx"] = Field(
+        "torch", alias="CUSTOM_BACKEND"
+    )
 
     # insightface-specific
     model_name: str = Field("buffalo_l", alias="MODEL_NAME")
@@ -60,7 +71,11 @@ class Settings(BaseSettings):
     detection_backend: Literal["insightface", "opencv", "none"] = Field(
         "none", alias="DETECTION_BACKEND"
     )
+    custom_detection_backend: Literal["insightface", "opencv", "none"] = Field(
+        "opencv", alias="CUSTOM_DETECTION_BACKEND"
+    )
     allow_center_crop: bool = Field(False, alias="ALLOW_CENTER_CROP")
+    custom_allow_center_crop: bool = Field(True, alias="CUSTOM_ALLOW_CENTER_CROP")
     min_det_score: float = Field(0.5, alias="MIN_DET_SCORE")
 
     # ── vector index ─────────────────────────────────────────────────────
@@ -68,6 +83,14 @@ class Settings(BaseSettings):
     index_path: str = Field(
         str(BASE_DIR / "backend" / "data" / "index" / "current.faiss"),
         alias="INDEX_PATH",
+    )
+    pretrained_index_path: str = Field(
+        str(BASE_DIR / "backend" / "data" / "index" / "pretrained.faiss"),
+        alias="PRETRAINED_INDEX_PATH",
+    )
+    custom_index_path: str = Field(
+        str(BASE_DIR / "backend" / "data" / "index" / "custom.faiss"),
+        alias="CUSTOM_INDEX_PATH",
     )
     hnsw_m: int = Field(32, alias="HNSW_M")
     hnsw_ef_construction: int = Field(200, alias="HNSW_EF_CONSTRUCTION")

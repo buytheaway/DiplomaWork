@@ -1,23 +1,22 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import time
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QMessageBox,
     QPushButton,
     QTextEdit,
+    QLineEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from app.core.api_client import ApiClient
 from app.core.worker import ApiWorker
-from app.ui.widgets import Card, DimLabel, InfoRow, SectionHeading, StatBox
+from app.ui.dialogs import show_error, show_warning
+from app.ui.widgets import Card, DimLabel, SectionHeading, StatBox
 
 
 class StatsTab(QWidget):
@@ -33,13 +32,12 @@ class StatsTab(QWidget):
         root.setContentsMargins(20, 20, 20, 20)
         root.setSpacing(16)
 
-        # --- dashboard row ---
         dash_row = QHBoxLayout()
         dash_row.setSpacing(12)
 
         self.stat_backend = StatBox("Backend", "-")
         self.stat_vectors = StatBox("Vectors", "-")
-        self.stat_dim = StatBox("Dim", "-")
+        self.stat_dim = StatBox("Model", "-")
         self.stat_index_type = StatBox("Index type", "-")
 
         for box in [self.stat_backend, self.stat_vectors, self.stat_dim, self.stat_index_type]:
@@ -49,16 +47,20 @@ class StatsTab(QWidget):
 
         root.addLayout(dash_row)
 
-        # --- main area: raw stats + rebuild ---
         body_row = QHBoxLayout()
         body_row.setSpacing(16)
 
-        # Raw stats
         stats_card = Card()
         sc = stats_card.body()
 
         stats_header = QHBoxLayout()
         stats_header.addWidget(SectionHeading("Index stats"))
+
+        self.pipeline_combo = QComboBox()
+        self.pipeline_combo.addItem("Pretrained", "pretrained")
+        self.pipeline_combo.addItem("Custom", "custom")
+        stats_header.addWidget(self.pipeline_combo)
+
         self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.setFixedWidth(90)
         self.refresh_btn.clicked.connect(self._refresh)
@@ -75,11 +77,10 @@ class StatsTab(QWidget):
 
         body_row.addWidget(stats_card, 2)
 
-        # Rebuild panel
         rebuild_card = Card()
         rc = rebuild_card.body()
         rc.addWidget(SectionHeading("Rebuild index"))
-        rc.addWidget(DimLabel("Build an HNSW index from current embeddings"))
+        rc.addWidget(DimLabel("Build an HNSW index for the selected pipeline"))
         rc.addSpacing(8)
 
         rc.addWidget(DimLabel("M"))
@@ -109,8 +110,6 @@ class StatsTab(QWidget):
 
         root.addLayout(body_row, 1)
 
-    # --- helpers ---
-
     def _run(self, func, *args) -> None:
         self._op_start = time.perf_counter()
         self.refresh_btn.setEnabled(False)
@@ -128,22 +127,21 @@ class StatsTab(QWidget):
 
         if isinstance(result, dict):
             self.stat_backend.set_value(result.get("embedding_backend", "-"))
-            self.stat_vectors.set_value(str(result.get("total_vectors", "-")))
-            self.stat_dim.set_value(str(result.get("dim", "-")))
+            self.stat_vectors.set_value(str(result.get("embeddings_count", "-")))
+            self.stat_dim.set_value(str(result.get("model_name", "-")))
             self.stat_index_type.set_value(result.get("index_type", "-"))
 
-        self.stats_view.setPlainText(json.dumps(result, indent=2, default=str))
+        self.stats_view.setPlainText(json.dumps(result, indent=2, ensure_ascii=False, default=str))
         self.rebuild_status.setText("")
 
     def _on_error(self, error: str) -> None:
         self.refresh_btn.setEnabled(True)
         self.rebuild_btn.setEnabled(True)
-        QMessageBox.critical(self, "Error", error)
-
-    # --- actions ---
+        self.rebuild_status.setText("")
+        show_error(self, "Error", error)
 
     def _refresh(self) -> None:
-        self._run(self.api.index_stats)
+        self._run(self.api.index_stats, self.pipeline_combo.currentData())
 
     def _rebuild(self) -> None:
         try:
@@ -153,13 +151,17 @@ class StatsTab(QWidget):
                 "ef_search": int(self.efs_input.text()),
             }
         except ValueError:
-            QMessageBox.warning(self, "Invalid", "All HNSW params must be integers")
+            show_warning(self, "Invalid", "All HNSW params must be integers")
             return
         self.rebuild_status.setText("Rebuilding...")
-        self._run(self.api.rebuild_index, "hnsw", params)
+        self._run(
+            self.api.rebuild_index,
+            "hnsw",
+            params,
+            self.pipeline_combo.currentData(),
+        )
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        # Автозагрузка при первом показе
         if self.stat_backend._value_text == "-":
             self._refresh()

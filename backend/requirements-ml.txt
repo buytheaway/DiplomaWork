@@ -1,15 +1,9 @@
-# Optional ML dependencies — install only the backend you need.
+# Optional ML dependencies - install only the backend you need.
 #
-# pip install -r requirements-ml.txt                     # installs everything
-# pip install -r requirements-ml-insightface.txt         # InsightFace only
-# pip install -r requirements-ml-onnx.txt                # ONNX (SCRFD+ArcFace) only
-# pip install torch opencv-python-headless               # Torch only
+# pip install -r requirements-ml.txt               # installs onnx + torch + insightface extras
+# pip install -r requirements-ml-onnx.txt          # ONNX (SCRFD + ArcFace) only
+# pip install -r requirements-ml-torch.txt         # Torch only
+# pip install -r requirements-ml-insightface.txt   # InsightFace only
 
-# ── InsightFace backend ──────────────────────────────────────────────
 -r requirements-ml-insightface.txt
-
-# ── Torch backend ────────────────────────────────────────────────────
-torch
-
-# ── shared (image decode + face detect) ──────────────────────────────
-opencv-python-headless
+-r requirements-ml-torch.txt

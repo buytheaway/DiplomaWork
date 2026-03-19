@@ -1,258 +1,197 @@
 # Fast Biometric Face Search
 
-Дипломный проект — быстрый биометрический поиск по лицу.
+Дипломный проект: быстрый биометрический поиск по лицу.
 
-**Стек:** FastAPI · PostgreSQL / SQLite · FAISS · PySide6 desktop client.
+## Что есть в проекте
 
-**Ключевой принцип:** ML-модель — это *плагин*. Система работает
-с `EMBEDDING_BACKEND=dummy` (без ML-зависимостей). Для настоящего
-распознавания — переключить на `insightface` или `onnx` через `.env`.
+- `pretrained` pipeline: baseline на `buffalo_l` через ONNX
+- `custom` pipeline: твоя PyTorch модель
+- FastAPI backend
+- FAISS индекс отдельно для каждого pipeline
+- PostgreSQL через Docker Compose или SQLite локально
+- PySide6 desktop клиент
+- multi-face search для обеих моделей
+- strict single-face enroll по умолчанию
 
----
+## Быстрый локальный запуск
 
-## Быстрый старт (Windows, без Docker)
-
-### 1. Backend
+### Backend
 
 ```powershell
 cd backend
+python -m venv .venv
+.\.venv\Scripts\activate
 pip install -r requirements.txt
-
-# Создать .env в корне репозитория (по умолчанию — dummy бэкенд):
-Copy-Item ..\.env.example ..\.env -Force
-
-# Запустить:
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Проверка: `http://127.0.0.1:8000/v1/health`
-Swagger: `http://127.0.0.1:8000/docs`
+Проверка:
 
-### 2. Desktop
+```powershell
+curl.exe http://127.0.0.1:8000/v1/health
+```
 
-В отдельном терминале:
+### Desktop
 
 ```powershell
 cd desktop
+python -m venv .venv
+.\.venv\Scripts\activate
 pip install -r requirements.txt
 python -m app.main
 ```
 
-При запуске в строке состояния отобразится статус подключения к бэкенду.
+## Docker Compose
 
-Если бэкенд недоступен — десктоп покажет предупреждение, но запустится.
+Без custom-модели контейнер стартует в baseline-режиме. Это безопасный дефолт.
 
-### 3. Тесты
+```powershell
+if (-not (Test-Path .env.docker)) { Copy-Item .env.docker.example .env.docker }
+docker compose up --build
+```
+
+Или коротко:
+
+```powershell
+.\tools\run_all.ps1
+```
+
+Что делает Docker-профиль:
+
+- поднимает `db`
+- поднимает `backend`
+- монтирует `models/` в контейнер
+- монтирует `training/outputs/` для кастомных весов
+
+Если хочешь включить custom pipeline в Docker:
+
+1. положи checkpoint в `training/outputs/`
+2. открой `.env.docker`
+3. выставь:
+
+```env
+ENABLE_CUSTOM_PIPELINE=true
+CUSTOM_BACKEND=torch
+TORCH_MODEL_PATH=/app/training/outputs/checkpoint_epoch_XXX.pth
+```
+
+Проверка:
+
+```powershell
+curl.exe http://127.0.0.1:8000/v1/health
+```
+
+## Desktop режимы
+
+- `Pretrained`
+- `Custom`
+- `Compare both`
+
+В режиме поиска backend умеет возвращать результаты сразу по нескольким лицам. В desktop это видно по колонке `Face`.
+
+## Правила face processing
+
+- `Enroll`: строго одно лицо
+- `Search`: можно несколько лиц
+- `0` лиц -> `422`
+- `>1` лицо на `Enroll` -> `422`
+- невалидное изображение -> `400`
+
+Фото сервер не хранит. Сохраняются только:
+
+- `person`
+- `embedding`
+- `index snapshot`
+
+## CelebA для custom модели
+
+Подготовленный формат:
+
+```text
+datasets/celeba_faces/
+  train/<identity>/*.jpg
+  val/<identity>/*.jpg
+  test/<identity>/*.jpg
+```
+
+### Автоскачивание через torchvision
+
+Нужен `gdown`:
+
+```powershell
+python -m pip install gdown
+```
+
+Скачать CelebA:
+
+```powershell
+@'
+from torchvision.datasets import CelebA
+CelebA(
+    root=r'c:\Users\mukha\OneDrive\Documents\GitHub\DiplomaWork\datasets\celeba_raw',
+    split='train',
+    download=True,
+)
+'@ | python -
+```
+
+Разложить в формат проекта:
+
+```powershell
+python training\tools\prepare_celeba.py --source-root datasets\celeba_raw\celeba --output-root datasets\celeba_faces --clean
+```
+
+## Обучение custom модели
+
+`training/config.yaml` уже настроен под CelebA:
+
+- `batch_size = 64`
+- `epochs = 20`
+- `train_dir = datasets/celeba_faces/train`
+- `val_dir = datasets/celeba_faces/val`
+
+Запуск:
+
+```powershell
+python training\train.py --config training\config.yaml --device cuda
+```
+
+Быстрый smoke run:
+
+```powershell
+python training\train.py --config training\config.yaml --device cuda --epochs 1
+```
+
+Оценка:
+
+```powershell
+python training\eval.py --config training\config.yaml --weights training\outputs\checkpoint_epoch_020.pth --device cuda --num-workers 0
+```
+
+## Важное про pretrained baseline
+
+`pretrained` pipeline сейчас используется как замороженный baseline для сравнения.
+
+То есть:
+
+- `buffalo_l` используется для инференса и benchmark
+- локальное обучение в этом репозитории идёт для `custom` PyTorch модели
+
+Если нужен fine-tune baseline-модели, это уже отдельный train pipeline, а не текущий ONNX runtime.
+
+## Тесты
 
 ```powershell
 cd backend
-$env:TESTING = "true"
-$env:DATABASE_URL = "sqlite+pysqlite:///:memory:"
-python -m pytest tests/ -v
+python -m pytest tests -q
 ```
 
----
+## Полезные endpoints
 
-## Docker
-
-```powershell
-# Скопировать конфиг
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
-
-# Запуск с dummy бэкендом
-docker compose up --build
-
-# С ML-зависимостями (insightface)
-docker compose build --build-arg ML_BACKEND=insightface
-# Поменять в .env: EMBEDDING_BACKEND=insightface
-docker compose up
-```
-
----
-
-## Ручное тестирование (curl / PowerShell)
-
-Все запросы к `http://127.0.0.1:8000`.
-
-```powershell
-# Health check
-Invoke-WebRequest http://127.0.0.1:8000/v1/health | Select-Object -Expand Content
-
-# Enroll (зарегистрировать лицо)
-curl -X POST http://127.0.0.1:8000/v1/enroll -F "file=@photo.jpg" -F "label=Alice"
-
-# Search (поиск по лицу)
-curl -X POST "http://127.0.0.1:8000/v1/search?k=5" -F "file=@photo.jpg"
-
-# Persons (получить / удалить)
-curl http://127.0.0.1:8000/v1/persons/<person_id>
-curl -X DELETE http://127.0.0.1:8000/v1/persons/<person_id>
-
-# Index stats / rebuild
-curl http://127.0.0.1:8000/v1/index/stats
-curl -X POST http://127.0.0.1:8000/v1/index/rebuild -H "Content-Type: application/json" -d '{"index_type":"hnsw","params":{"m":32,"ef_construction":200,"ef_search":64}}'
-```
-
----
-
-## API endpoints (v1)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/health` | `{"status": "ok", "embedding_backend": "…"}` |
-| POST | `/v1/enroll` | Multipart `file` + optional `label` |
-| POST | `/v1/search?k=5` | Multipart `file` → результаты + decision |
-| GET | `/v1/persons` | Список активных персон (limit/offset) |
-| GET | `/v1/persons/{id}` | Получить person + embeddings |
-| DELETE | `/v1/persons/{id}` | Soft-delete |
-| GET | `/v1/index/stats` | Статистика индекса |
-| POST | `/v1/index/rebuild` | `{"index_type": "hnsw", "params": {…}}` |
-
----
-
-## Архитектура
-
-```mermaid
-flowchart TB
-    subgraph Desktop["PySide6 Desktop Client"]
-        UI[Main Window<br/>Search / Enroll / Persons / Stats]
-        AC[ApiClient<br/>HTTP requests]
-        UI --> AC
-    end
-
-    subgraph Backend["FastAPI Backend"]
-        API[API Routes<br/>enroll · search · persons · index · health]
-        EMB[Embedding Extractor<br/>dummy / insightface / onnx / torch]
-        IDX[Index Manager<br/>FAISS flat / hnsw / ivfpq]
-        DB[(SQLite / PostgreSQL<br/>persons · embeddings · snapshots)]
-        API --> EMB
-        API --> IDX
-        API --> DB
-    end
-
-    AC -- "HTTP / JSON" --> API
-```
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant D as Desktop
-    participant B as Backend
-    participant F as FAISS Index
-    participant DB as Database
-
-    U->>D: Select photo + Search
-    D->>B: POST /v1/search (file, k)
-    B->>B: Extract embedding (InsightFace)
-    B->>F: search(vector, k)
-    F-->>B: distances + IDs
-    B->>DB: resolve person labels
-    DB-->>B: person records
-    B-->>D: {results, decision, best_score, threshold}
-    D-->>U: MATCH / UNKNOWN + results table
-```
-
----
-
-## Embedding backends
-
-| Backend | Значение `.env` | Доп. зависимости | Статус |
-|---------|-----------------|-----------------|--------|
-| Dummy | `dummy` | нет | Всегда работает (тесты, демо) |
-| InsightFace | `insightface` | `insightface onnxruntime` | Рабочий, buffalo_l |
-| ONNX | `onnx` | `onnxruntime opencv-python-headless` | Рабочий, нужны `.onnx` файлы |
-| Torch | `torch` | `torch opencv-python-headless` | **Экспериментальный** — чекпоинты недообучены |
-
-### Настройка InsightFace
-
-```env
-EMBEDDING_BACKEND=insightface
-EMBEDDING_DIM=512
-MODEL_NAME=buffalo_l
-```
-
-Модели скачаются автоматически при первом запуске.
-
-### Настройка ONNX
-
-```env
-EMBEDDING_BACKEND=onnx
-ONNX_DETECTOR_PATH=models/scrfd_10g_bnkps.onnx
-ONNX_EMBEDDER_PATH=models/w600k_r50.onnx
-```
-
-Файлы `.onnx` нужно скачать и положить по указанным путям.
-
-### Настройка Torch (экспериментальный)
-
-```env
-EMBEDDING_BACKEND=torch
-TORCH_MODEL_PATH=../training/outputs/checkpoint_epoch_005.pth
-TORCH_DEVICE=cpu
-DETECTION_BACKEND=opencv
-```
-
-> ⚠ Текущие чекпоинты дали 0% val accuracy за 5 эпох.
-> Для реального использования нужно переобучить модель на большем датасете.
-
----
-
-## Match threshold и decision
-
-Ответ `/v1/search` включает автоматическое решение:
-
-```json
-{
-  "k": 5,
-  "model": "insightface_buffalo_l",
-  "results": [ … ],
-  "best_score": 0.87,
-  "threshold_used": 0.4,
-  "best_match_above_threshold": true,
-  "decision": "match"
-}
-```
-
-- `decision: "match"` — best_score >= MATCH_THRESHOLD
-- `decision: "unknown"` — ниже порога или пустые результаты
-
-Настройка порога:
-
-```env
-MATCH_THRESHOLD=0.4
-```
-
-Чем выше — тем строже. Если порог слишком высокий, система будет возвращать `unknown` даже для правильных лиц.
-
----
-
-## Важные ограничения
-
-- **Оригинальные фото не хранятся.** Только эмбеддинги + метаданные.
-- **Strict single-face policy:** 0 лиц → 422, больше 1 лица → 422.
-- **Индекс в памяти**, сохраняется на диск при изменениях.
-
----
-
-## Структура проекта
-
-```
-├── backend/
-│   ├── app/
-│   │   ├── api/          # routes + schemas
-│   │   ├── core/         # config, logging
-│   │   ├── db/           # models, session, migrations
-│   │   └── services/
-│   │       ├── embeddings/   # dummy / insightface / torch / onnx
-│   │       ├── face/         # detector, align, quality
-│   │       ├── index/        # FAISS adapter
-│   │       └── storage/      # SQLAlchemy repositories
-│   ├── tests/
-│   ├── requirements.txt
-│   └── requirements-ml-*.txt
-├── desktop/              # PySide6 GUI
-├── training/             # IR-ResNet обучение (экспериментальное)
-├── scripts/              # CLI утилиты
-├── .env.example          # дефолтный конфиг
-└── docker-compose.yml
-```
+- `GET /v1/health`
+- `POST /v1/enroll`
+- `POST /v1/search`
+- `POST /v1/search/compare`
+- `GET /v1/persons`
+- `GET /v1/index/stats`
+- `POST /v1/index/rebuild`

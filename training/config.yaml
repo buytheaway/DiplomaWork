@@ -3,10 +3,10 @@ device: "cuda"
 amp: true
 
 data:
-  train_dir: "datasets/digiface1m_small/train"
-  val_dir: "datasets/digiface1m_small/val"
-  pairs_file: ""  # optional, LFW pairs file for verification evaluation
-  num_workers: 2
+  train_dir: "datasets/celeba_faces/train"
+  val_dir: "datasets/celeba_faces/val"
+  pairs_file: ""
+  num_workers: 4
   input_size: 112
 
 model:
@@ -19,8 +19,8 @@ loss:
   scale: 64.0
 
 train:
-  batch_size: 32
-  epochs: 5
+  batch_size: 64
+  epochs: 20
   log_interval: 100
   save_every: 1
   output_dir: "training/outputs"

@@ -18,8 +18,12 @@ class IndexStatsResponse(BaseModel):
     file_path: str
     last_snapshot_id: str | None
     embedding_backend: str | None = None
+    model_name: str | None = None
+    pipeline: str | None = None
+    available_pipelines: list[str] = Field(default_factory=list)
 
 
 class RebuildIndexRequest(BaseModel):
     index_type: Literal["flat", "hnsw", "ivfpq"]
     params: dict[str, Any] = Field(default_factory=dict)
+    pipeline: Literal["pretrained", "custom"] | None = None

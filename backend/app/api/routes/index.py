@@ -2,21 +2,31 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, get_index_manager
+from app.api.deps import get_db, get_pipeline_registry
 from app.api.schemas.index import IndexStatsResponse, RebuildIndexRequest
-from app.core.config import settings
-from app.services.index.index_manager import IndexManager
+from app.services.runtime.pipeline_registry import PipelineRegistry
 
 router = APIRouter()
 
 
 @router.get("/index/stats", response_model=IndexStatsResponse)
-def index_stats(index_manager: IndexManager = Depends(get_index_manager)) -> IndexStatsResponse:
-    data = index_manager.stats()
-    data["embedding_backend"] = settings.embedding_backend
+def index_stats(
+    pipeline: Literal["pretrained", "custom"] | None = Query(None),
+    registry: PipelineRegistry = Depends(get_pipeline_registry),
+) -> IndexStatsResponse:
+    try:
+        runtime = registry.resolve_search(pipeline)
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    data = runtime.index_manager.stats()
+    data["embedding_backend"] = runtime.backend
+    data["pipeline"] = runtime.key
+    data["available_pipelines"] = registry.available_pipelines()
     return IndexStatsResponse(**data)
 
 
@@ -24,8 +34,15 @@ def index_stats(index_manager: IndexManager = Depends(get_index_manager)) -> Ind
 def rebuild_index(
     payload: RebuildIndexRequest,
     db: Session = Depends(get_db),
-    index_manager: IndexManager = Depends(get_index_manager),
+    registry: PipelineRegistry = Depends(get_pipeline_registry),
 ) -> IndexStatsResponse:
-    stats = index_manager.rebuild(db, payload.index_type, payload.params)
+    try:
+        runtime = registry.resolve_search(payload.pipeline)
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    stats = runtime.index_manager.rebuild(db, payload.index_type, payload.params)
     db.commit()
+    stats["embedding_backend"] = runtime.backend
+    stats["pipeline"] = runtime.key
+    stats["available_pipelines"] = registry.available_pipelines()
     return IndexStatsResponse(**stats)

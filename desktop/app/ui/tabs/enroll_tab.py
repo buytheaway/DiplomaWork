@@ -3,13 +3,11 @@ from __future__ import annotations
 
 import json
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QTextEdit,
     QVBoxLayout,
@@ -18,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from app.core.api_client import ApiClient
 from app.core.worker import ApiWorker
+from app.ui.dialogs import show_error, show_warning
 from app.ui.widgets import Card, DimLabel, ImagePreview, SectionHeading
 
 
@@ -33,17 +32,14 @@ class EnrollTab(QWidget):
         root.setContentsMargins(24, 24, 24, 24)
         root.setSpacing(16)
 
-        # верхняя часть: форма + превью
         top_row = QHBoxLayout()
         top_row.setSpacing(16)
 
-        # Карточка формы
         form_card = Card()
         fc = form_card.body()
         fc.addWidget(SectionHeading("Register new face"))
         fc.addSpacing(4)
 
-        # Файл
         fc.addWidget(DimLabel("Image file"))
         file_row = QHBoxLayout()
         file_row.setSpacing(8)
@@ -60,15 +56,22 @@ class EnrollTab(QWidget):
 
         fc.addSpacing(8)
 
-        # Метка
         fc.addWidget(DimLabel("Label (optional — имя или ID человека)"))
         self.label_input = QLineEdit()
         self.label_input.setPlaceholderText("e.g. Alice, employee_042")
         fc.addWidget(self.label_input)
 
+        fc.addSpacing(8)
+
+        fc.addWidget(DimLabel("Pipeline"))
+        self.pipeline_combo = QComboBox()
+        self.pipeline_combo.addItem("Pretrained", "pretrained")
+        self.pipeline_combo.addItem("Custom", "custom")
+        self.pipeline_combo.addItem("Both", "both")
+        fc.addWidget(self.pipeline_combo)
+
         fc.addSpacing(12)
 
-        # Кнопка
         self.enroll_btn = QPushButton("Enroll")
         self.enroll_btn.setObjectName("primary")
         self.enroll_btn.setFixedHeight(36)
@@ -81,25 +84,22 @@ class EnrollTab(QWidget):
 
         top_row.addWidget(form_card, 3)
 
-        # Превью
         preview_card = Card()
         pc = preview_card.body()
-        pc.setAlignment(Qt.AlignCenter)
         pc.addWidget(SectionHeading("Preview"))
         self.preview = ImagePreview(180)
-        pc.addWidget(self.preview, 0, Qt.AlignCenter)
+        pc.addWidget(self.preview)
         pc.addStretch()
         top_row.addWidget(preview_card, 1)
 
         root.addLayout(top_row, 1)
 
-        # Ответ
         result_card = Card()
         rc = result_card.body()
         rc.addWidget(SectionHeading("Response"))
         self.response_view = QTextEdit()
         self.response_view.setReadOnly(True)
-        self.response_view.setMaximumHeight(140)
+        self.response_view.setMaximumHeight(180)
         self.response_view.setPlaceholderText("Enrollment result will appear here...")
         rc.addWidget(self.response_view)
         root.addWidget(result_card)
@@ -116,12 +116,13 @@ class EnrollTab(QWidget):
     def _enroll(self) -> None:
         path = self.image_path.text().strip()
         if not path:
-            QMessageBox.warning(self, "Missing", "Select an image file")
+            show_warning(self, "Missing", "Select an image file")
             return
         label = self.label_input.text().strip() or None
+        pipeline = self.pipeline_combo.currentData()
         self.enroll_btn.setEnabled(False)
         self.status_label.setText("Enrolling...")
-        self._worker = ApiWorker(self.api.enroll, path, label, parent=self)
+        self._worker = ApiWorker(self.api.enroll, path, label, pipeline, parent=self)
         self._worker.finished.connect(self._on_success)
         self._worker.failed.connect(self._on_error)
         self._worker.start()
@@ -129,9 +130,9 @@ class EnrollTab(QWidget):
     def _on_success(self, result: object) -> None:
         self.enroll_btn.setEnabled(True)
         self.status_label.setText("")
-        self.response_view.setPlainText(json.dumps(result, indent=2, default=str))
+        self.response_view.setPlainText(json.dumps(result, indent=2, ensure_ascii=False, default=str))
 
     def _on_error(self, error: str) -> None:
         self.enroll_btn.setEnabled(True)
         self.status_label.setText("")
-        QMessageBox.critical(self, "Enroll failed", error)
+        show_error(self, "Enroll failed", error)

@@ -10,23 +10,26 @@ RUN apt-get update \
        libgomp1 build-essential libglib2.0-0 libsm6 libxext6 libxrender1 libxcb1 \
     && rm -rf /var/lib/apt/lists/*
 
-# ── core dependencies (always installed) ─────────────────────────────
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# ── ML dependencies (optional) ───────────────────────────────────────
-#   INSTALL_ML=false   → no ML deps (dummy backend only)
-#   INSTALL_ML=true    → install ALL ML deps
-#   ML_BACKEND=insightface | onnx → install only that backend's deps
+# Optional ML dependencies.
+# INSTALL_ML=true installs everything.
+# ML_BACKEND supports: insightface, onnx, torch, dual.
 ARG INSTALL_ML=false
 ARG ML_BACKEND=none
-COPY requirements-ml.txt requirements-ml-insightface.txt requirements-ml-onnx.txt /app/
+COPY requirements-ml.txt requirements-ml-insightface.txt requirements-ml-onnx.txt requirements-ml-torch.txt /app/
 RUN if [ "$INSTALL_ML" = "true" ]; then \
       pip install --no-cache-dir -r /app/requirements-ml.txt; \
     elif [ "$ML_BACKEND" = "insightface" ]; then \
       pip install --no-cache-dir -r /app/requirements-ml-insightface.txt; \
     elif [ "$ML_BACKEND" = "onnx" ]; then \
       pip install --no-cache-dir -r /app/requirements-ml-onnx.txt; \
+    elif [ "$ML_BACKEND" = "torch" ]; then \
+      pip install --no-cache-dir -r /app/requirements-ml-torch.txt; \
+    elif [ "$ML_BACKEND" = "dual" ]; then \
+      pip install --no-cache-dir -r /app/requirements-ml-onnx.txt && \
+      pip install --no-cache-dir -r /app/requirements-ml-torch.txt; \
     fi
 
 COPY app /app/app

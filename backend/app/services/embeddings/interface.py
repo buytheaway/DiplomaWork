@@ -1,21 +1,15 @@
-"""Embedding extractor interface (port) and domain errors.
-
-Every concrete extractor *must* implement :class:`EmbeddingExtractor`.
-Backend code depends **only** on this module — never on a specific ML library.
-"""
+"""Embedding extractor interface (port) and face-processing errors."""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 import numpy as np
 
 
-# ── domain errors ────────────────────────────────────────────────────────────
-
-
 class FaceProcessingError(Exception):
-    """Base error for face‑processing failures."""
+    """Base error for face-processing failures."""
 
 
 class InvalidImageError(FaceProcessingError):
@@ -27,41 +21,36 @@ class NoFaceDetectedError(FaceProcessingError):
 
 
 class MultipleFacesDetectedError(FaceProcessingError):
-    """More than one face detected when strict single‑face policy is active."""
+    """More than one face was detected when strict single-face mode is active."""
 
 
-# ── abstract extractor ───────────────────────────────────────────────────────
+@dataclass(frozen=True)
+class FaceEmbedding:
+    """Embedding extracted for a single detected face."""
+
+    embedding: np.ndarray
+    detection_score: float | None = None
+    bbox: tuple[float, float, float, float] | None = None
 
 
 class EmbeddingExtractor(ABC):
-    """Port: convert raw image bytes → normalised float32 embedding vector.
-
-    Implementations:
-    * ``DummyEmbeddingExtractor`` — always available, no ML deps.
-    * ``InsightFaceEmbeddingExtractor`` — requires ``insightface`` + ``onnxruntime``.
-    * ``TorchEmbeddingExtractor`` — requires ``torch`` + optional face detector.
-    * ``OnnxEmbeddingExtractor`` — skeleton for any ONNX‑based model.
-    """
+    """Port: convert raw image bytes into normalized face embeddings."""
 
     model_name: str
     dim: int
 
     @abstractmethod
     def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
-        """Return a **unit‑normalised** ``float32`` vector of shape ``(dim,)``."""
+        """Return a unit-normalized embedding for exactly one face."""
         raise NotImplementedError
 
-
-# ── dummy (always available) ─────────────────────────────────────────────────
+    def extract_embeddings(self, image_bytes: bytes) -> list[FaceEmbedding]:
+        """Return embeddings for all valid faces in the image."""
+        return [FaceEmbedding(embedding=self.extract_embedding(image_bytes))]
 
 
 class DummyEmbeddingExtractor(EmbeddingExtractor):
-    """Deterministic extractor that needs zero ML dependencies.
-
-    Returns a fixed unit vector (``[1, 0, 0, …]``).  Useful for:
-    * Integration tests (``TESTING=true``)
-    * Demo / smoke‑test without a real model
-    """
+    """Deterministic extractor that needs zero ML dependencies."""
 
     def __init__(self, dim: int = 512) -> None:
         self.model_name = "dummy"
@@ -75,15 +64,9 @@ class DummyEmbeddingExtractor(EmbeddingExtractor):
         return vector
 
 
-# ── factory ──────────────────────────────────────────────────────────────────
-
-
 def create_extractor(settings: object) -> EmbeddingExtractor:
-    """Instantiate the extractor chosen by ``settings.embedding_backend``.
+    """Instantiate the extractor chosen by ``settings.embedding_backend``."""
 
-    Heavy ML libraries are imported **lazily** so that
-    ``EMBEDDING_BACKEND=dummy`` never triggers an ``import torch`` / etc.
-    """
     backend: str = getattr(settings, "embedding_backend", "dummy")
     dim: int = getattr(settings, "embedding_dim", 512)
 
@@ -92,9 +75,10 @@ def create_extractor(settings: object) -> EmbeddingExtractor:
 
     if backend == "torch":
         import logging
+
         logging.getLogger(__name__).warning(
-            "torch backend is experimental — trained checkpoints may produce poor embeddings. "
-            "Consider insightface or onnx for production use."
+            "torch backend is experimental; use it as the custom model path, "
+            "not as a production baseline"
         )
         from app.services.embeddings.torch_extractor import TorchEmbeddingExtractor
 

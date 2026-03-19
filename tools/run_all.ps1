@@ -3,12 +3,12 @@ $ErrorActionPreference = "Stop"
 Set-Location -Path (Split-Path -Parent $MyInvocation.MyCommand.Path) | Out-Null
 Set-Location -Path ".." | Out-Null
 
-if (-not (Test-Path ".env")) {
-    Write-Host "Creating .env from .env.example (EMBEDDING_BACKEND=dummy) ..."
-    Copy-Item ".env.example" ".env"
+if (-not (Test-Path ".env.docker")) {
+    Write-Host "Creating .env.docker from .env.docker.example ..."
+    Copy-Item ".env.docker.example" ".env.docker"
 }
 
-Write-Host "Starting Docker Compose ..."
+Write-Host "Starting Docker Compose (db + backend dual runtime) ..."
 docker compose up --build
 
 Write-Host ""

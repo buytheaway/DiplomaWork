@@ -1,0 +1,3 @@
+# ML extras for EMBEDDING_BACKEND=torch
+torch
+opencv-python-headless

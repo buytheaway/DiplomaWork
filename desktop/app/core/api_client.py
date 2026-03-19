@@ -36,7 +36,7 @@ class ApiClient:
     def __init__(self, settings: DesktopSettings | None = None) -> None:
         self.settings = settings or DesktopSettings()
         self.base_url = self.settings.base_url.rstrip("/")
-        self.timeout = 15
+        self.timeout = self.settings.request_timeout_sec
 
     def _request_json(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         response = requests.request(method, url, timeout=self.timeout, **kwargs)
@@ -49,29 +49,55 @@ class ApiClient:
     def health(self) -> dict[str, Any]:
         return self._request_json("GET", f"{self.base_url}/v1/health")
 
-    def enroll(self, image_path: str, label: str | None) -> dict[str, Any]:
+    def enroll(
+        self,
+        image_path: str,
+        label: str | None,
+        pipeline: str = "pretrained",
+    ) -> dict[str, Any]:
         with open(image_path, "rb") as handle:
             files = {"file": handle}
-            data = {"label": label} if label else {}
+            data = {"pipeline": pipeline}
+            if label:
+                data["label"] = label
             return self._request_json("POST", f"{self.base_url}/v1/enroll", files=files, data=data)
 
-    def search(self, image_path: str, k: int) -> dict[str, Any]:
+    def search(self, image_path: str, k: int, pipeline: str = "pretrained") -> dict[str, Any]:
         with open(image_path, "rb") as handle:
             files = {"file": handle}
             return self._request_json(
                 "POST",
                 f"{self.base_url}/v1/search",
+                params={"k": k, "pipeline": pipeline},
+                files=files,
+            )
+
+    def search_compare(self, image_path: str, k: int) -> dict[str, Any]:
+        with open(image_path, "rb") as handle:
+            files = {"file": handle}
+            return self._request_json(
+                "POST",
+                f"{self.base_url}/v1/search/compare",
                 params={"k": k},
                 files=files,
             )
 
     # ── index ────────────────────────────────────────────────────────────
 
-    def index_stats(self) -> dict[str, Any]:
-        return self._request_json("GET", f"{self.base_url}/v1/index/stats")
+    def index_stats(self, pipeline: str = "pretrained") -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"{self.base_url}/v1/index/stats",
+            params={"pipeline": pipeline},
+        )
 
-    def rebuild_index(self, index_type: str, params: dict[str, Any]) -> dict[str, Any]:
-        payload = {"index_type": index_type, "params": params}
+    def rebuild_index(
+        self,
+        index_type: str,
+        params: dict[str, Any],
+        pipeline: str = "pretrained",
+    ) -> dict[str, Any]:
+        payload = {"index_type": index_type, "params": params, "pipeline": pipeline}
         return self._request_json(
             "POST",
             f"{self.base_url}/v1/index/rebuild",

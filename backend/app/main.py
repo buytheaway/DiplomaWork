@@ -1,15 +1,15 @@
 """FastAPI application factory.
 
-* Wires routes, creates the embedding extractor (plugin), and boots the index.
-* Heavy ML libraries are loaded **only** when ``EMBEDDING_BACKEND`` is not ``dummy``.
+* Wires routes, creates the embedding runtime pipelines, and boots the indices.
+* Heavy ML libraries are loaded lazily per configured pipeline.
 """
 
 from __future__ import annotations
 
 import logging
 import random
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import numpy as np
 from fastapi import FastAPI, Request
@@ -20,42 +20,41 @@ from starlette.responses import JSONResponse
 from app.api.routes import enroll, health, index, persons, search
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.services.embeddings.interface import create_extractor
-from app.services.index.index_manager import IndexManager
+from app.services.runtime.pipeline_registry import PipelineRegistry
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup / shutdown lifecycle hook (replaces deprecated ``on_event``)."""
     settings = get_settings()
-
-    # ── extractor (plugin) ───────────────────────────────────────────
-    app.state.extractor = create_extractor(settings)
     logger = logging.getLogger(__name__)
-    logger.info(
-        "Embedding extractor ready: backend=%s model=%s dim=%d",
-        settings.embedding_backend,
-        app.state.extractor.model_name,
-        app.state.extractor.dim,
-    )
 
-    # ── vector index ─────────────────────────────────────────────────
-    index_manager = IndexManager(settings)
-    app.state.index_manager = index_manager
+    registry = PipelineRegistry(settings)
+    registry.initialize()
+    app.state.pipeline_registry = registry
+    app.state.extractor = registry.default_runtime.extractor
+    app.state.index_manager = registry.default_runtime.index_manager
+
+    logger.info(
+        "Default pipeline ready: key=%s backend=%s model=%s dim=%d available=%s",
+        registry.default_pipeline,
+        registry.default_runtime.backend,
+        registry.default_runtime.extractor.model_name,
+        registry.default_runtime.extractor.dim,
+        registry.available_pipelines(),
+    )
 
     if not settings.testing:
         try:
             from app.db.session import SessionLocal
 
             with SessionLocal() as db:
-                loaded = index_manager.load_latest_snapshot(db)
-                logger.info("Index loaded from snapshot: %s", loaded)
-        except Exception as exc:
-            logger.warning("Failed to load index snapshot: %s", exc)
+                loaded = registry.load_latest_snapshots(db)
+                logger.info("Index snapshots loaded: %s", loaded)
+        except Exception as exc:  # pragma: no cover - exercised in real runtime
+            logger.warning("Failed to load index snapshots: %s", exc)
 
-    yield  # ── application is running ──
-
-    # shutdown (nothing required for now)
+    yield
 
 
 def create_app() -> FastAPI:
@@ -67,8 +66,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
-    # ── CORS ─────────────────────────────────────────────────────────
-    origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
@@ -77,7 +75,6 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ── API-key guard (skips /health and /docs) ──────────────────────
     if settings.api_key:
         _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -88,7 +85,10 @@ def create_app() -> FastAPI:
                 return await call_next(request)
             key = request.headers.get("X-API-Key", "")
             if key != settings.api_key:
-                return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key"})
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Invalid or missing API key"},
+                )
             return await call_next(request)
 
     app.include_router(health.router, prefix=settings.api_v1_prefix)

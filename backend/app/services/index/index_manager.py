@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings
+from app.core.config import BASE_DIR, Settings
 from app.services.index.faiss_index import FaissIndex
 from app.services.storage.repositories import EmbeddingRepo, IndexSnapshotRepo
 
@@ -31,16 +31,25 @@ class IndexMatch:
 class IndexManager:
     """High‑level wrapper around :class:`FaissIndex`."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        model_name: str | None = None,
+        index_path_override: str | None = None,
+    ) -> None:
         self.settings = settings
         self.dim = settings.embedding_dim
-        self.index_path = Path(settings.index_path)
+        raw_index_path = Path(index_path_override or settings.index_path)
+        if not raw_index_path.is_absolute():
+            raw_index_path = BASE_DIR / raw_index_path
+        self.index_path = raw_index_path
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
         self._index = self._create_index(
             settings.index_type, self.default_params_for(settings.index_type)
         )
         self._index_type = settings.index_type
         self._params = self.default_params_for(settings.index_type)
+        self.model_name = model_name
         self.last_snapshot_id: str | None = None
         self._logger = logging.getLogger(__name__)
 
@@ -73,7 +82,7 @@ class IndexManager:
 
     def load_latest_snapshot(self, db: Session) -> bool:
         repo = IndexSnapshotRepo(db)
-        snapshot = repo.get_latest()
+        snapshot = repo.get_latest_for_path(str(self.index_path))
         if snapshot and Path(snapshot.path).exists():
             self._index = self._create_index(snapshot.index_type, snapshot.params)
             self._index.load(snapshot.path)
@@ -114,7 +123,7 @@ class IndexManager:
     def rebuild(self, db: Session, index_type: str, params: dict[str, Any]) -> dict[str, Any]:
         if not params:
             params = self.default_params_for(index_type)
-        embeddings = EmbeddingRepo(db).get_active_embeddings()
+        embeddings = EmbeddingRepo(db).get_active_embeddings(model=self.model_name)
         self._index = self._create_index(index_type, params)
         self._index_type = index_type
         self._params = params
@@ -133,6 +142,7 @@ class IndexManager:
         stats["loaded"] = self._index.count() > 0
         stats["file_path"] = str(self.index_path)
         stats["last_snapshot_id"] = self.last_snapshot_id
+        stats["model_name"] = self.model_name
         return stats
 
     def count(self) -> int:

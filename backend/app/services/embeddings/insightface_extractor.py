@@ -21,6 +21,7 @@ import numpy as np
 from app.core.config import Settings
 from app.services.embeddings.interface import (
     EmbeddingExtractor,
+    FaceEmbedding,
     InvalidImageError,
     MultipleFacesDetectedError,
     NoFaceDetectedError,
@@ -75,29 +76,12 @@ class InsightFaceEmbeddingExtractor(EmbeddingExtractor):
             "InsightFace model loaded: name=%s dim=%d", self.model_name, self.dim,
         )
 
-    def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
-        if not image_bytes:
-            raise InvalidImageError("Empty image bytes")
-
-        image = _decode_image(image_bytes)
-        faces = self._app.get(image)
-
-        if not faces:
-            raise NoFaceDetectedError("No face detected in image")
-
-        if self.strict_single_face and len(faces) != 1:
-            raise MultipleFacesDetectedError(
-                f"Expected 1 face, detected {len(faces)}"
-            )
-
-        face = max(faces, key=lambda f: float(f.det_score))
-
+    def _to_face_embedding(self, face) -> FaceEmbedding:
         if float(face.det_score) < self.min_det_score:
             raise NoFaceDetectedError(
                 f"Detection score {face.det_score:.3f} below threshold {self.min_det_score}"
             )
 
-        # Prefer the pre-normed embedding produced by the recognition model
         embedding = getattr(face, "normed_embedding", None)
         if embedding is None:
             embedding = getattr(face, "embedding", None)
@@ -105,8 +89,6 @@ class InsightFaceEmbeddingExtractor(EmbeddingExtractor):
             raise NoFaceDetectedError("Model did not produce an embedding")
 
         vector = np.asarray(embedding, dtype=np.float32).ravel()
-
-        # Safety: L2-normalise if not already unit-length
         norm = np.linalg.norm(vector)
         if norm > 0:
             vector = vector / norm
@@ -116,4 +98,43 @@ class InsightFaceEmbeddingExtractor(EmbeddingExtractor):
                 f"Model returned dim={vector.shape[0]}, expected {self.dim}"
             )
 
-        return vector
+        bbox_attr = getattr(face, "bbox", None)
+        bbox = tuple(float(value) for value in np.asarray(bbox_attr).tolist()) if bbox_attr is not None else None
+        return FaceEmbedding(
+            embedding=vector,
+            detection_score=float(face.det_score),
+            bbox=bbox,
+        )
+
+    def extract_embeddings(self, image_bytes: bytes) -> list[FaceEmbedding]:
+        if not image_bytes:
+            raise InvalidImageError("Empty image bytes")
+
+        image = _decode_image(image_bytes)
+        faces = self._app.get(image)
+
+        if not faces:
+            raise NoFaceDetectedError("No face detected in image")
+
+        ordered_faces = sorted(faces, key=lambda face: float(face.det_score), reverse=True)
+        embeddings: list[FaceEmbedding] = []
+        for idx, face in enumerate(ordered_faces):
+            try:
+                embeddings.append(self._to_face_embedding(face))
+            except Exception as exc:
+                logger.warning("Skipping InsightFace face %s due to extraction error: %s", idx, exc)
+
+        if not embeddings:
+            raise NoFaceDetectedError("No valid face embeddings were produced")
+
+        return embeddings
+
+    def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
+        embeddings = self.extract_embeddings(image_bytes)
+
+        if self.strict_single_face and len(embeddings) != 1:
+            raise MultipleFacesDetectedError(
+                f"Expected 1 face, detected {len(embeddings)}"
+            )
+
+        return embeddings[0].embedding

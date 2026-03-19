@@ -36,7 +36,7 @@ def app_stylesheet() -> str:
     }}
 
     /* ── инпуты ── */
-    QLineEdit, QSpinBox, QTextEdit {{
+    QLineEdit, QSpinBox, QTextEdit, QComboBox {{
         background-color: {BG_INPUT};
         border: 1px solid {BORDER};
         border-radius: 4px;
@@ -44,8 +44,18 @@ def app_stylesheet() -> str:
         color: {TEXT};
         selection-background-color: {ACCENT};
     }}
-    QLineEdit:focus, QSpinBox:focus, QTextEdit:focus {{
+    QLineEdit:focus, QSpinBox:focus, QTextEdit:focus, QComboBox:focus {{
         border-color: {ACCENT};
+    }}
+    QComboBox::drop-down {{
+        border: none;
+        width: 20px;
+    }}
+    QComboBox QAbstractItemView {{
+        background-color: {BG_CARD};
+        border: 1px solid {BORDER};
+        selection-background-color: {ACCENT};
+        color: {TEXT};
     }}
 
     /* ── кнопки ── */
@@ -140,6 +150,14 @@ def app_stylesheet() -> str:
     QLabel#badgeUnknown {{
         background-color: {RED};
         color: #ffffff;
+        border-radius: 4px;
+        padding: 4px 14px;
+        font-weight: 700;
+        font-size: 15px;
+    }}
+    QLabel#badgeCompare {{
+        background-color: {ORANGE};
+        color: #111111;
         border-radius: 4px;
         padding: 4px 14px;
         font-weight: 700;

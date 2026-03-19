@@ -30,6 +30,7 @@ import numpy as np
 from app.core.config import BASE_DIR, Settings
 from app.services.embeddings.interface import (
     EmbeddingExtractor,
+    FaceEmbedding,
     InvalidImageError,
     MultipleFacesDetectedError,
     NoFaceDetectedError,
@@ -420,7 +421,9 @@ class OnnxEmbeddingExtractor(EmbeddingExtractor):
             self.dim,
         )
 
-    def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
+    def _decode_and_detect(
+        self, image_bytes: bytes
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray]:
         if not image_bytes:
             raise InvalidImageError("Empty image bytes")
 
@@ -438,22 +441,21 @@ class OnnxEmbeddingExtractor(EmbeddingExtractor):
         if len(scores) == 0:
             raise NoFaceDetectedError("No face detected in image")
 
-        if self.strict_single_face and len(scores) != 1:
-            raise MultipleFacesDetectedError(
-                f"Expected 1 face, detected {len(scores)}"
-            )
+        return image, boxes, kps, scores
 
-        best_idx = int(scores.argmax())
-        if scores[best_idx] < self.min_det_score:
-            raise NoFaceDetectedError(
-                f"Detection score {scores[best_idx]:.3f} below threshold "
-                f"{self.min_det_score}"
-            )
+    def _extract_face_embedding(
+        self,
+        image: np.ndarray,
+        box: np.ndarray,
+        landmarks: np.ndarray | None,
+        score: float,
+    ) -> FaceEmbedding:
+        cv2 = _ensure_cv2()
 
-        if kps is not None:
-            aligned = _align_face(image, kps[best_idx])
+        if landmarks is not None:
+            aligned = _align_face(image, landmarks)
         else:
-            x1, y1, x2, y2 = boxes[best_idx].astype(int)
+            x1, y1, x2, y2 = box.astype(int)
             x1, y1 = max(x1, 0), max(y1, 0)
             x2 = min(x2, image.shape[1])
             y2 = min(y2, image.shape[0])
@@ -469,4 +471,40 @@ class OnnxEmbeddingExtractor(EmbeddingExtractor):
                 f"Model returned dim={vector.shape[0]}, expected {self.dim}"
             )
 
-        return vector
+        return FaceEmbedding(
+            embedding=vector,
+            detection_score=float(score),
+            bbox=tuple(float(value) for value in box.tolist()),
+        )
+
+    def extract_embeddings(self, image_bytes: bytes) -> list[FaceEmbedding]:
+        image, boxes, kps, scores = self._decode_and_detect(image_bytes)
+
+        embeddings: list[FaceEmbedding] = []
+        for idx, score in enumerate(scores):
+            try:
+                embeddings.append(
+                    self._extract_face_embedding(
+                        image=image,
+                        box=boxes[idx],
+                        landmarks=None if kps is None else kps[idx],
+                        score=float(score),
+                    )
+                )
+            except Exception as exc:
+                logger.warning("Skipping ONNX face %s due to extraction error: %s", idx, exc)
+
+        if not embeddings:
+            raise NoFaceDetectedError("No valid face crops could be embedded")
+
+        return embeddings
+
+    def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
+        embeddings = self.extract_embeddings(image_bytes)
+
+        if self.strict_single_face and len(embeddings) != 1:
+            raise MultipleFacesDetectedError(
+                f"Expected 1 face, detected {len(embeddings)}"
+            )
+
+        return embeddings[0].embedding

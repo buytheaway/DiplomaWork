@@ -63,8 +63,10 @@ class EmbeddingRepo:
         if embedding is not None:
             embedding.is_active = False
 
-    def get_active_embeddings(self) -> list[Embedding]:
+    def get_active_embeddings(self, model: str | None = None) -> list[Embedding]:
         stmt = select(Embedding).where(Embedding.is_active.is_(True))
+        if model is not None:
+            stmt = stmt.where(Embedding.model == model)
         return list(self.db.execute(stmt).scalars().all())
 
     def get_embeddings_with_person(self, embedding_ids: Iterable[str]) -> list[Embedding]:
@@ -100,4 +102,12 @@ class IndexSnapshotRepo:
 
     def get_latest(self) -> IndexSnapshot | None:
         stmt = select(IndexSnapshot).order_by(IndexSnapshot.created_at.desc())
+        return self.db.execute(stmt).scalars().first()
+
+    def get_latest_for_path(self, path: str) -> IndexSnapshot | None:
+        stmt = (
+            select(IndexSnapshot)
+            .where(IndexSnapshot.path == path)
+            .order_by(IndexSnapshot.created_at.desc())
+        )
         return self.db.execute(stmt).scalars().first()

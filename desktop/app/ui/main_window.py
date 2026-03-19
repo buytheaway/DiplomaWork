@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -33,7 +32,6 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Шапка
         header = QWidget()
         header.setStyleSheet("background-color: #27282c; border-bottom: 1px solid #3a3b40;")
         header.setFixedHeight(52)
@@ -41,15 +39,18 @@ class MainWindow(QMainWindow):
         hbox.setContentsMargins(20, 0, 20, 0)
 
         title = QLabel("Face Search")
-        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #e1e2e6; background: transparent;")
+        title.setStyleSheet(
+            "font-size: 16px; font-weight: 700; color: #e1e2e6; background: transparent;"
+        )
         subtitle = QLabel("biometric identification system")
-        subtitle.setStyleSheet("font-size: 12px; color: #8b8d93; background: transparent; margin-left: 8px;")
+        subtitle.setStyleSheet(
+            "font-size: 12px; color: #8b8d93; background: transparent; margin-left: 8px;"
+        )
 
         hbox.addWidget(title)
         hbox.addWidget(subtitle)
         hbox.addStretch()
 
-        # Индикатор подключения
         self._conn_dot = QLabel("●")
         self._conn_dot.setStyleSheet("color: #8b8d93; font-size: 16px; background: transparent;")
         self._conn_label = QLabel("checking...")
@@ -59,7 +60,6 @@ class MainWindow(QMainWindow):
 
         root.addWidget(header)
 
-        # Вкладки
         tabs = QTabWidget()
         tabs.setDocumentMode(True)
         tabs.addTab(SearchTab(), "  Search  ")
@@ -77,10 +77,16 @@ class MainWindow(QMainWindow):
             client = ApiClient(self._settings)
             data = client.health()
             backend = data.get("embedding_backend", "?")
+            pipelines = data.get("available_pipelines", [])
+            pipeline_suffix = f" [{' / '.join(pipelines)}]" if pipelines else ""
             self._conn_dot.setStyleSheet("color: #3ba55d; font-size: 16px; background: transparent;")
-            self._conn_label.setText(f"{backend} · {url}")
-            self._conn_label.setStyleSheet("color: #8b8d93; font-size: 12px; background: transparent;")
+            self._conn_label.setText(f"{backend}{pipeline_suffix} · {url}")
+            self._conn_label.setStyleSheet(
+                "color: #8b8d93; font-size: 12px; background: transparent;"
+            )
         except Exception:
             self._conn_dot.setStyleSheet("color: #ed4245; font-size: 16px; background: transparent;")
             self._conn_label.setText(f"offline · {url}")
-            self._conn_label.setStyleSheet("color: #ed4245; font-size: 12px; background: transparent;")
+            self._conn_label.setStyleSheet(
+                "color: #ed4245; font-size: 12px; background: transparent;"
+            )

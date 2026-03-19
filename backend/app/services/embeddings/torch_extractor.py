@@ -6,9 +6,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from app.core.config import Settings
+from app.core.config import BASE_DIR, Settings
 from app.services.embeddings.interface import (
     EmbeddingExtractor,
+    FaceEmbedding,
+    InvalidImageError,
     MultipleFacesDetectedError,
     NoFaceDetectedError,
 )
@@ -42,7 +44,9 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         if not settings.torch_model_path:
             raise ValueError("TORCH_MODEL_PATH is required for torch embedding backend")
 
-        weights_path = Path(settings.torch_model_path)
+        raw_path = Path(settings.torch_model_path)
+        candidates = [raw_path, BASE_DIR / raw_path, BASE_DIR / "backend" / raw_path]
+        weights_path = next((candidate for candidate in candidates if candidate.exists()), raw_path)
         if not weights_path.exists():
             raise FileNotFoundError(f"Torch model not found: {weights_path}")
 
@@ -56,18 +60,9 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
             self.detector = InsightFaceDetector(model_name=settings.model_name)
         logging.getLogger(__name__).info("Torch embedding model loaded: %s", weights_path)
 
-    def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
+    def _extract_face_embedding(self, image: np.ndarray, face) -> FaceEmbedding:
         import torch
 
-        image = decode_image(image_bytes)
-        faces = self.detector.detect(image)
-        if not faces:
-            raise NoFaceDetectedError("No face detected")
-
-        if self.strict_single_face and len(faces) != 1:
-            raise MultipleFacesDetectedError("Multiple faces detected")
-
-        face = max(faces, key=lambda f: f.det_score)
         validate_face_quality(face, self.min_det_score)
 
         try:
@@ -100,4 +95,43 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         if vector.shape[0] != self.dim:
             raise NoFaceDetectedError("Unexpected embedding dimension")
 
-        return vector
+        bbox = tuple(float(value) for value in face.bbox.tolist()) if face.bbox is not None else None
+        return FaceEmbedding(
+            embedding=vector,
+            detection_score=float(face.det_score),
+            bbox=bbox,
+        )
+
+    def extract_embeddings(self, image_bytes: bytes) -> list[FaceEmbedding]:
+        if not image_bytes:
+            raise InvalidImageError("Empty image bytes")
+
+        image = decode_image(image_bytes)
+        faces = self.detector.detect(image)
+        if not faces:
+            raise NoFaceDetectedError("No face detected")
+
+        ordered_faces = sorted(faces, key=lambda detected: detected.det_score, reverse=True)
+        embeddings: list[FaceEmbedding] = []
+        for idx, face in enumerate(ordered_faces):
+            try:
+                embeddings.append(self._extract_face_embedding(image, face))
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "Skipping torch face %s due to extraction error: %s",
+                    idx,
+                    exc,
+                )
+
+        if not embeddings:
+            raise NoFaceDetectedError("No valid face crops could be embedded")
+
+        return embeddings
+
+    def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
+        embeddings = self.extract_embeddings(image_bytes)
+
+        if self.strict_single_face and len(embeddings) != 1:
+            raise MultipleFacesDetectedError("Multiple faces detected")
+
+        return embeddings[0].embedding
