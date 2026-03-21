@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -44,6 +46,14 @@ class ApiClient:
             raise ApiError(response.status_code, response.text)
         return response.json()
 
+    @contextmanager
+    def _image_file(self, image_source: str | bytes, filename: str = "capture.jpg"):
+        if isinstance(image_source, str):
+            with open(image_source, "rb") as handle:
+                yield {"file": (Path(image_source).name, handle)}
+            return
+        yield {"file": (filename, image_source, "image/jpeg")}
+
     # ── enroll / search ──────────────────────────────────────────────────
 
     def health(self) -> dict[str, Any]:
@@ -51,20 +61,18 @@ class ApiClient:
 
     def enroll(
         self,
-        image_path: str,
+        image_path: str | bytes,
         label: str | None,
         pipeline: str = "pretrained",
     ) -> dict[str, Any]:
-        with open(image_path, "rb") as handle:
-            files = {"file": handle}
+        with self._image_file(image_path) as files:
             data = {"pipeline": pipeline}
             if label:
                 data["label"] = label
             return self._request_json("POST", f"{self.base_url}/v1/enroll", files=files, data=data)
 
-    def search(self, image_path: str, k: int, pipeline: str = "pretrained") -> dict[str, Any]:
-        with open(image_path, "rb") as handle:
-            files = {"file": handle}
+    def search(self, image_path: str | bytes, k: int, pipeline: str = "pretrained") -> dict[str, Any]:
+        with self._image_file(image_path) as files:
             return self._request_json(
                 "POST",
                 f"{self.base_url}/v1/search",
@@ -72,9 +80,8 @@ class ApiClient:
                 files=files,
             )
 
-    def search_compare(self, image_path: str, k: int) -> dict[str, Any]:
-        with open(image_path, "rb") as handle:
-            files = {"file": handle}
+    def search_compare(self, image_path: str | bytes, k: int) -> dict[str, Any]:
+        with self._image_file(image_path) as files:
             return self._request_json(
                 "POST",
                 f"{self.base_url}/v1/search/compare",

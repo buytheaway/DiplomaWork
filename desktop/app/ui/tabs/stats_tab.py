@@ -4,19 +4,23 @@ import json
 import time
 
 from PySide6.QtWidgets import (
+    QFileDialog,
     QComboBox,
     QHBoxLayout,
-    QPushButton,
-    QTextEdit,
+    QLabel,
     QLineEdit,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from app.core.api_client import ApiClient
 from app.core.worker import ApiWorker
+from app.ui.activity import export_events_csv, recent_events, record_event
 from app.ui.dialogs import show_error, show_warning
-from app.ui.widgets import Card, DimLabel, SectionHeading, StatBox
+from app.ui.widgets import Card, ConsoleView, DimLabel, MetricCard, SectionHeading, StatusPill
 
 
 class StatsTab(QWidget):
@@ -24,124 +28,168 @@ class StatsTab(QWidget):
         super().__init__()
         self.api = ApiClient()
         self._worker: ApiWorker | None = None
-        self._op_start: float = 0.0
+        self._started = 0.0
+        self._stats_payload: dict = {}
         self._build_ui()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 20, 20, 20)
-        root.setSpacing(16)
+        root.setContentsMargins(24, 24, 24, 24)
+        root.setSpacing(18)
 
-        dash_row = QHBoxLayout()
-        dash_row.setSpacing(12)
+        header = QHBoxLayout()
+        title_col = QVBoxLayout()
+        title_col.addWidget(SectionHeading("Logs & Stats"))
+        title_col.addWidget(DimLabel("Backend status, activity, and index rebuild tools"))
+        header.addLayout(title_col)
+        header.addStretch()
+        self.health_pill = StatusPill("CHECKING", state="idle")
+        header.addWidget(self.health_pill)
+        root.addLayout(header)
 
-        self.stat_backend = StatBox("Backend", "-")
-        self.stat_vectors = StatBox("Vectors", "-")
-        self.stat_dim = StatBox("Model", "-")
-        self.stat_index_type = StatBox("Index type", "-")
+        metrics = QHBoxLayout()
+        metrics.setSpacing(14)
+        self.metric_backend = MetricCard("Backend", "-")
+        self.metric_default = MetricCard("Default pipeline", "-")
+        self.metric_pretrained = MetricCard("Pretrained vectors", "-")
+        self.metric_custom = MetricCard("Custom vectors", "-")
+        for metric in [
+            self.metric_backend,
+            self.metric_default,
+            self.metric_pretrained,
+            self.metric_custom,
+        ]:
+            metrics.addWidget(metric, 1)
+        root.addLayout(metrics)
 
-        for box in [self.stat_backend, self.stat_vectors, self.stat_dim, self.stat_index_type]:
-            card = Card()
-            card.body().addWidget(box)
-            dash_row.addWidget(card, 1)
+        main_row = QHBoxLayout()
+        main_row.setSpacing(18)
 
-        root.addLayout(dash_row)
+        left_card = Card()
+        left = left_card.body()
+        left_header = QHBoxLayout()
+        left_header.addWidget(SectionHeading("Activity log"))
+        left_header.addStretch()
+        self.export_btn = QPushButton("EXPORT CSV")
+        self.export_btn.setObjectName("secondaryButton")
+        self.export_btn.clicked.connect(self._export_events)
+        left_header.addWidget(self.export_btn)
+        left.addLayout(left_header)
 
-        body_row = QHBoxLayout()
-        body_row.setSpacing(16)
+        self.events_table = QTableWidget(0, 4)
+        self.events_table.setHorizontalHeaderLabels(["TIMESTAMP", "SEVERITY", "CATEGORY", "MESSAGE"])
+        self.events_table.verticalHeader().setVisible(False)
+        self.events_table.setAlternatingRowColors(True)
+        self.events_table.setSelectionBehavior(QTableWidget.SelectRows)
+        left.addWidget(self.events_table, 1)
+        main_row.addWidget(left_card, 3)
 
-        stats_card = Card()
-        sc = stats_card.body()
+        right_col = QVBoxLayout()
+        right_col.setSpacing(16)
 
-        stats_header = QHBoxLayout()
-        stats_header.addWidget(SectionHeading("Index stats"))
+        controls_card = Card()
+        controls = controls_card.body()
+        controls.addWidget(SectionHeading("Index"))
 
+        pipeline_row = QHBoxLayout()
         self.pipeline_combo = QComboBox()
-        self.pipeline_combo.addItem("Pretrained", "pretrained")
-        self.pipeline_combo.addItem("Custom", "custom")
-        stats_header.addWidget(self.pipeline_combo)
-
-        self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.setFixedWidth(90)
+        self.pipeline_combo.addItem("PRETRAINED", "pretrained")
+        self.pipeline_combo.addItem("CUSTOM", "custom")
+        self.refresh_btn = QPushButton("REFRESH")
+        self.refresh_btn.setObjectName("primaryButton")
         self.refresh_btn.clicked.connect(self._refresh)
-        stats_header.addStretch()
-        self.latency_info = DimLabel("")
-        stats_header.addWidget(self.latency_info)
-        stats_header.addWidget(self.refresh_btn)
-        sc.addLayout(stats_header)
+        pipeline_row.addWidget(self.pipeline_combo)
+        pipeline_row.addWidget(self.refresh_btn)
+        controls.addLayout(pipeline_row)
 
-        self.stats_view = QTextEdit()
-        self.stats_view.setReadOnly(True)
-        self.stats_view.setPlaceholderText("Click Refresh to load index stats...")
-        sc.addWidget(self.stats_view)
-
-        body_row.addWidget(stats_card, 2)
-
-        rebuild_card = Card()
-        rc = rebuild_card.body()
-        rc.addWidget(SectionHeading("Rebuild index"))
-        rc.addWidget(DimLabel("Build an HNSW index for the selected pipeline"))
-        rc.addSpacing(8)
-
-        rc.addWidget(DimLabel("M"))
         self.m_input = QLineEdit("32")
-        rc.addWidget(self.m_input)
-
-        rc.addWidget(DimLabel("efConstruction"))
         self.efc_input = QLineEdit("200")
-        rc.addWidget(self.efc_input)
-
-        rc.addWidget(DimLabel("efSearch"))
         self.efs_input = QLineEdit("64")
-        rc.addWidget(self.efs_input)
+        self.m_input.setPlaceholderText("HNSW M")
+        self.efc_input.setPlaceholderText("HNSW efConstruction")
+        self.efs_input.setPlaceholderText("HNSW efSearch")
+        controls.addWidget(self.m_input)
+        controls.addWidget(self.efc_input)
+        controls.addWidget(self.efs_input)
 
-        rc.addSpacing(8)
+        rebuild_btn = QPushButton("REBUILD HNSW")
+        rebuild_btn.setObjectName("secondaryButton")
+        rebuild_btn.clicked.connect(self._rebuild)
+        self.rebuild_btn = rebuild_btn
+        controls.addWidget(rebuild_btn)
 
-        self.rebuild_btn = QPushButton("Rebuild HNSW")
-        self.rebuild_btn.setObjectName("primary")
-        self.rebuild_btn.clicked.connect(self._rebuild)
-        rc.addWidget(self.rebuild_btn)
+        self.latency_label = DimLabel("")
+        controls.addWidget(self.latency_label)
+        right_col.addWidget(controls_card)
 
-        self.rebuild_status = DimLabel("")
-        rc.addWidget(self.rebuild_status)
-        rc.addStretch()
+        console_card = Card()
+        cc = console_card.body()
+        cc.addWidget(SectionHeading("Response data"))
+        self.stats_view = ConsoleView("Backend health and index payloads will appear here.")
+        self.stats_view.setMinimumHeight(320)
+        cc.addWidget(self.stats_view)
+        right_col.addWidget(console_card, 1)
 
-        body_row.addWidget(rebuild_card, 1)
+        main_row.addLayout(right_col, 2)
+        root.addLayout(main_row, 1)
 
-        root.addLayout(body_row, 1)
+    def _snapshot(self) -> dict:
+        health = self.api.health()
+        stats = {}
+        for pipeline in health.get("available_pipelines", []):
+            stats[pipeline] = self.api.index_stats(pipeline)
+        return {"health": health, "stats": stats}
 
-    def _run(self, func, *args) -> None:
-        self._op_start = time.perf_counter()
+    def _run(self, func, *args, on_success) -> None:
+        self._started = time.perf_counter()
         self.refresh_btn.setEnabled(False)
         self.rebuild_btn.setEnabled(False)
         self._worker = ApiWorker(func, *args, parent=self)
-        self._worker.finished.connect(self._on_success)
+        self._worker.finished.connect(on_success)
         self._worker.failed.connect(self._on_error)
         self._worker.start()
 
-    def _on_success(self, result: object) -> None:
-        self.refresh_btn.setEnabled(True)
-        self.rebuild_btn.setEnabled(True)
-        latency_ms = (time.perf_counter() - self._op_start) * 1000
-        self.latency_info.setText(f"{latency_ms:.0f} ms")
-
-        if isinstance(result, dict):
-            self.stat_backend.set_value(result.get("embedding_backend", "-"))
-            self.stat_vectors.set_value(str(result.get("embeddings_count", "-")))
-            self.stat_dim.set_value(str(result.get("model_name", "-")))
-            self.stat_index_type.set_value(result.get("index_type", "-"))
-
-        self.stats_view.setPlainText(json.dumps(result, indent=2, ensure_ascii=False, default=str))
-        self.rebuild_status.setText("")
-
-    def _on_error(self, error: str) -> None:
-        self.refresh_btn.setEnabled(True)
-        self.rebuild_btn.setEnabled(True)
-        self.rebuild_status.setText("")
-        show_error(self, "Error", error)
-
     def _refresh(self) -> None:
-        self._run(self.api.index_stats, self.pipeline_combo.currentData())
+        self._run(self._snapshot, on_success=self._on_snapshot)
+
+    def _on_snapshot(self, payload: object) -> None:
+        self.refresh_btn.setEnabled(True)
+        self.rebuild_btn.setEnabled(True)
+        latency_ms = (time.perf_counter() - self._started) * 1000
+        self.latency_label.setText(f"Last refresh: {latency_ms:.0f} ms")
+
+        if not isinstance(payload, dict):
+            return
+        self._stats_payload = payload
+        health = payload.get("health", {})
+        stats = payload.get("stats", {})
+
+        available = health.get("available_pipelines", [])
+        self.health_pill.set_state("ok", f"ONLINE / {' + '.join(str(v).upper() for v in available)}")
+        self.metric_backend.set_value(health.get("embedding_backend", "-"), health.get("model_name", "-"))
+        self.metric_default.set_value(str(health.get("default_pipeline", "-")).upper(), "Switchable runtime")
+        self.metric_pretrained.set_value(
+            str(stats.get("pretrained", {}).get("embeddings_count", 0)),
+            f"loaded={stats.get('pretrained', {}).get('loaded', False)}",
+        )
+        self.metric_custom.set_value(
+            str(stats.get("custom", {}).get("embeddings_count", 0)),
+            f"loaded={stats.get('custom', {}).get('loaded', False)}",
+        )
+
+        self._render_events()
+        self.stats_view.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+        record_event("logs", "System snapshot refreshed", severity="INFO")
+
+    def _render_events(self) -> None:
+        events = recent_events(limit=50)
+        self.events_table.setRowCount(len(events))
+        for row, event in enumerate(events):
+            self.events_table.setItem(row, 0, QTableWidgetItem(event.timestamp.strftime("%Y-%m-%d %H:%M:%S")))
+            self.events_table.setItem(row, 1, QTableWidgetItem(event.severity))
+            self.events_table.setItem(row, 2, QTableWidgetItem(event.category.upper()))
+            self.events_table.setItem(row, 3, QTableWidgetItem(event.message))
+        self.events_table.resizeColumnsToContents()
 
     def _rebuild(self) -> None:
         try:
@@ -151,17 +199,67 @@ class StatsTab(QWidget):
                 "ef_search": int(self.efs_input.text()),
             }
         except ValueError:
-            show_warning(self, "Invalid", "All HNSW params must be integers")
+            show_warning(self, "Invalid params", "HNSW parameters must be integers.")
             return
-        self.rebuild_status.setText("Rebuilding...")
-        self._run(
-            self.api.rebuild_index,
-            "hnsw",
-            params,
-            self.pipeline_combo.currentData(),
+        pipeline = self.pipeline_combo.currentData()
+        self._run(self.api.rebuild_index, "hnsw", params, pipeline, on_success=self._on_rebuild)
+
+    def _on_rebuild(self, payload: object) -> None:
+        self.refresh_btn.setEnabled(True)
+        self.rebuild_btn.setEnabled(True)
+        latency_ms = (time.perf_counter() - self._started) * 1000
+        self.latency_label.setText(f"Rebuild completed in {latency_ms:.0f} ms")
+        self.stats_view.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+        record_event(
+            "logs",
+            f"Rebuilt {self.pipeline_combo.currentData()} index",
+            severity="WARN",
+            details=json.dumps(payload, ensure_ascii=False),
         )
+        self._refresh()
+
+    def _on_error(self, error: str) -> None:
+        self.refresh_btn.setEnabled(True)
+        self.rebuild_btn.setEnabled(True)
+        self.health_pill.set_state("error", "REQUEST FAILED")
+        record_event("logs", "System request failed", severity="ERROR", details=error)
+        show_error(self, "System request failed", error)
+
+    def _export_events(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export event log",
+            "activity_log.csv",
+            "CSV (*.csv)",
+        )
+        if not path:
+            return
+        out_path = export_events_csv(path)
+        self.latency_label.setText(f"Exported log to {out_path}")
+        record_event("logs", "Exported activity log", severity="INFO", details=str(out_path))
+        self._render_events()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        if self.stat_backend._value_text == "-":
+        self._render_events()
+        if not self._stats_payload:
             self._refresh()
+
+    def apply_global_filter(self, text: str) -> None:
+        query = text.strip().lower()
+        events = recent_events(limit=50)
+        filtered = [
+            event
+            for event in events
+            if not query
+            or query in event.category.lower()
+            or query in event.message.lower()
+            or query in event.severity.lower()
+        ]
+        self.events_table.setRowCount(len(filtered))
+        for row, event in enumerate(filtered):
+            self.events_table.setItem(row, 0, QTableWidgetItem(event.timestamp.strftime("%Y-%m-%d %H:%M:%S")))
+            self.events_table.setItem(row, 1, QTableWidgetItem(event.severity))
+            self.events_table.setItem(row, 2, QTableWidgetItem(event.category.upper()))
+            self.events_table.setItem(row, 3, QTableWidgetItem(event.message))
+        self.events_table.resizeColumnsToContents()

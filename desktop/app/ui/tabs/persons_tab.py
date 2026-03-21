@@ -1,26 +1,23 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QFileDialog,
+    QGridLayout,
     QHBoxLayout,
-    QHeaderView,
-    QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
-    QTextEdit,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from app.core.api_client import ApiClient
 from app.core.worker import ApiWorker
+from app.ui.activity import record_event
 from app.ui.dialogs import show_error, show_warning
-from app.ui.widgets import Card, DimLabel, SectionHeading
+from app.ui.widgets import ActionButton, Card, ConsoleView, DimLabel, PersonCard, SectionHeading, StatusPill
 
 
 class PersonsTab(QWidget):
@@ -28,181 +25,233 @@ class PersonsTab(QWidget):
         super().__init__()
         self.api = ApiClient()
         self._worker: ApiWorker | None = None
+        self._all_persons: list[dict] = []
+        self._selected_id: str | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 20, 20, 20)
-        root.setSpacing(16)
-
-        # --- список персон ---
-        list_card = Card()
-        lc = list_card.body()
+        root.setContentsMargins(24, 24, 24, 24)
+        root.setSpacing(18)
 
         header_row = QHBoxLayout()
-        header_row.addWidget(SectionHeading("Enrolled persons"))
-        self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.setFixedWidth(90)
-        self.refresh_btn.clicked.connect(self._load_list)
+        title_col = QVBoxLayout()
+        title = SectionHeading("Database")
+        subtitle = DimLabel("Person records and embedding metadata")
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        header_row.addLayout(title_col)
         header_row.addStretch()
-        header_row.addWidget(self.refresh_btn)
-        lc.addLayout(header_row)
+        self.count_pill = StatusPill("0 RECORDS", state="idle")
+        header_row.addWidget(self.count_pill)
+        root.addLayout(header_row)
 
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Person ID", "Label", "Created"])
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.setAlternatingRowColors(True)
-        self.table.verticalHeader().setVisible(False)
-        hdr = self.table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        hdr.setSectionResizeMode(1, QHeaderView.Stretch)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.table.setMinimumHeight(160)
-        self.table.itemSelectionChanged.connect(self._on_row_selected)
-        lc.addWidget(self.table)
-
-        self.count_label = DimLabel("0 persons")
-        lc.addWidget(self.count_label)
-
-        root.addWidget(list_card, 2)
-
-        # --- details + actions ---
-        bottom_row = QHBoxLayout()
-        bottom_row.setSpacing(16)
-
-        # Detail card
-        detail_card = Card()
-        dc = detail_card.body()
-        dc.addWidget(SectionHeading("Person detail"))
-
-        id_row = QHBoxLayout()
-        id_row.setSpacing(8)
-        id_row.addWidget(DimLabel("Person ID"))
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(10)
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText("Filter by label or person id")
+        self.filter_input.textChanged.connect(self._render_cards)
         self.person_id_input = QLineEdit()
-        self.person_id_input.setPlaceholderText("Select from list or enter UUID")
-        id_row.addWidget(self.person_id_input, 1)
+        self.person_id_input.setPlaceholderText("Person id")
+        self.get_btn = ActionButton("Load person")
+        self.get_btn.clicked.connect(self._load_selected_person)
+        self.refresh_btn = ActionButton("Refresh", primary=True)
+        self.refresh_btn.clicked.connect(self._load_list)
+        filter_row.addWidget(self.filter_input, 2)
+        filter_row.addWidget(self.person_id_input, 2)
+        filter_row.addWidget(self.get_btn)
+        filter_row.addWidget(self.refresh_btn)
+        root.addLayout(filter_row)
 
-        self.get_btn = QPushButton("Get")
-        self.get_btn.setFixedWidth(70)
-        self.get_btn.clicked.connect(self._get_person)
-        id_row.addWidget(self.get_btn)
+        body_row = QHBoxLayout()
+        body_row.setSpacing(18)
 
-        dc.addLayout(id_row)
+        cards_card = Card()
+        cards_body = cards_card.body()
+        cards_body.addWidget(SectionHeading("People"))
+        self.cards_scroll = QScrollArea()
+        self.cards_scroll.setWidgetResizable(True)
+        self.cards_scroll.setFrameShape(QScrollArea.NoFrame)
+        self.cards_host = QWidget()
+        self.cards_layout = QGridLayout(self.cards_host)
+        self.cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.cards_layout.setHorizontalSpacing(14)
+        self.cards_layout.setVerticalSpacing(14)
+        self.cards_scroll.setWidget(self.cards_host)
+        cards_body.addWidget(self.cards_scroll, 1)
+        body_row.addWidget(cards_card, 3)
 
-        self.response_view = QTextEdit()
-        self.response_view.setReadOnly(True)
-        self.response_view.setMaximumHeight(140)
-        self.response_view.setPlaceholderText("Person detail will appear here...")
-        dc.addWidget(self.response_view)
+        detail_card = Card()
+        detail = detail_card.body()
+        detail.addWidget(SectionHeading("Details"))
+        self.selection_label = DimLabel("Select a person card to inspect details.")
+        detail.addWidget(self.selection_label)
 
-        bottom_row.addWidget(detail_card, 3)
+        self.detail_console = ConsoleView("Selected person metadata will appear here.")
+        self.detail_console.setMinimumHeight(360)
+        detail.addWidget(self.detail_console)
 
-        # Action card
-        action_card = Card()
-        ac = action_card.body()
-        ac.addWidget(SectionHeading("Actions"))
-        ac.addSpacing(8)
-
-        self.delete_btn = QPushButton("Delete person")
-        self.delete_btn.setObjectName("danger")
-        self.delete_btn.clicked.connect(self._delete_person)
-        ac.addWidget(self.delete_btn)
-
-        ac.addSpacing(4)
-        ac.addWidget(DimLabel("Soft-deletes the person and\ndeactivates all embeddings."))
-        ac.addStretch()
+        action_row = QHBoxLayout()
+        self.delete_btn = ActionButton("Delete")
+        self.delete_btn.clicked.connect(self._delete_selected)
+        self.export_btn = ActionButton("Export JSON")
+        self.export_btn.clicked.connect(self._export_detail)
+        action_row.addWidget(self.delete_btn)
+        action_row.addWidget(self.export_btn)
+        detail.addLayout(action_row)
 
         self.status_label = DimLabel("")
-        ac.addWidget(self.status_label)
+        detail.addWidget(self.status_label)
+        detail.addStretch()
+        body_row.addWidget(detail_card, 2)
 
-        bottom_row.addWidget(action_card, 1)
+        root.addLayout(body_row, 1)
 
-        root.addLayout(bottom_row, 1)
-
-    # --- list ---
-
-    def _load_list(self) -> None:
+    def _run(self, func, *args, on_success) -> None:
         self.refresh_btn.setEnabled(False)
-        self._worker = ApiWorker(self.api.list_persons, parent=self)
-        self._worker.finished.connect(self._on_list_loaded)
-        self._worker.failed.connect(self._on_error)
-        self._worker.start()
-
-    def _on_list_loaded(self, result: object) -> None:
-        self.refresh_btn.setEnabled(True)
-        if not isinstance(result, list):
-            return
-        self.table.setSortingEnabled(False)
-        self.table.setRowCount(len(result))
-        for row, person in enumerate(result):
-            self.table.setItem(row, 0, QTableWidgetItem(person.get("id", "")))
-            self.table.setItem(row, 1, QTableWidgetItem(person.get("label") or ""))
-            created = person.get("created_at", "")
-            if isinstance(created, str) and len(created) > 19:
-                created = created[:19].replace("T", " ")
-            self.table.setItem(row, 2, QTableWidgetItem(str(created)))
-        self.table.setSortingEnabled(True)
-        self.count_label.setText(f"{len(result)} persons")
-
-    def _on_row_selected(self) -> None:
-        rows = self.table.selectionModel().selectedRows()
-        if rows:
-            pid_item = self.table.item(rows[0].row(), 0)
-            if pid_item:
-                self.person_id_input.setText(pid_item.text())
-
-    # --- detail / delete ---
-
-    def _person_id(self) -> str | None:
-        pid = self.person_id_input.text().strip()
-        if not pid:
-            show_warning(self, "Missing", "Enter a Person ID")
-            return None
-        return pid
-
-    def _run(self, func, *args) -> None:
-        self.status_label.setText("Loading...")
+        self.get_btn.setEnabled(False)
+        self.delete_btn.setEnabled(False)
         self._worker = ApiWorker(func, *args, parent=self)
-        self._worker.finished.connect(self._on_detail_success)
+        self._worker.finished.connect(on_success)
         self._worker.failed.connect(self._on_error)
         self._worker.start()
-
-    def _on_detail_success(self, result: object) -> None:
-        self.get_btn.setEnabled(True)
-        self.delete_btn.setEnabled(True)
-        self.status_label.setText("")
-        self.response_view.setPlainText(json.dumps(result, indent=2, default=str))
 
     def _on_error(self, error: str) -> None:
         self.refresh_btn.setEnabled(True)
         self.get_btn.setEnabled(True)
         self.delete_btn.setEnabled(True)
         self.status_label.setText("")
-        show_error(self, "Error", error)
+        record_event("database", "Registry request failed", severity="ERROR", details=error)
+        show_error(self, "Database action failed", error)
 
-    def _get_person(self) -> None:
-        pid = self._person_id()
-        if pid:
-            self.get_btn.setEnabled(False)
-            self.delete_btn.setEnabled(False)
-            self._run(self.api.get_person, pid)
+    def _load_list(self) -> None:
+        self.status_label.setText("Refreshing...")
+        self._run(self.api.list_persons, on_success=self._on_list_loaded)
 
-    def _delete_person(self) -> None:
-        pid = self._person_id()
-        if not pid:
+    def _on_list_loaded(self, result: object) -> None:
+        self.refresh_btn.setEnabled(True)
+        self.get_btn.setEnabled(True)
+        self.delete_btn.setEnabled(True)
+        self.status_label.setText("")
+        if not isinstance(result, list):
+            return
+        self._all_persons = result
+        self.count_pill.set_state("ok", f"{len(result)} RECORDS")
+        self._render_cards()
+        record_event("database", f"Loaded {len(result)} profiles", severity="INFO")
+
+    def _render_cards(self) -> None:
+        while self.cards_layout.count():
+            item = self.cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        query = self.filter_input.text().strip().lower()
+        filtered = []
+        for person in self._all_persons:
+            label = (person.get("label") or "").lower()
+            person_id = str(person.get("id", "")).lower()
+            if not query or query in label or query in person_id:
+                filtered.append(person)
+
+        if not filtered:
+            self.cards_layout.addWidget(DimLabel("No profiles match the current filter."), 0, 0)
+            return
+
+        for index, person in enumerate(filtered):
+            row, col = divmod(index, 3)
+            card = PersonCard(person)
+            card.selected.connect(self._load_person_by_id)
+            card.deleteRequested.connect(self._confirm_delete)
+            self.cards_layout.addWidget(card, row, col)
+
+    def _person_id(self) -> str | None:
+        value = self.person_id_input.text().strip()
+        if not value:
+            show_warning(self, "Missing person id", "Select a card or type a person id.")
+            return None
+        return value
+
+    def _load_person_by_id(self, person_id: str) -> None:
+        self.person_id_input.setText(person_id)
+        self._load_selected_person()
+
+    def _load_selected_person(self) -> None:
+        person_id = self._person_id()
+        if not person_id:
+            return
+        self._selected_id = person_id
+        self.status_label.setText("Loading profile...")
+        self._run(self.api.get_person, person_id, on_success=self._on_person_loaded)
+
+    def _on_person_loaded(self, result: object) -> None:
+        self.refresh_btn.setEnabled(True)
+        self.get_btn.setEnabled(True)
+        self.delete_btn.setEnabled(True)
+        self.status_label.setText("")
+        if not isinstance(result, dict):
+            return
+        self.selection_label.setText(
+            f"Selected  {result.get('label') or 'UNNAMED'}  /  {str(result.get('id', ''))[:16]}"
+        )
+        self.detail_console.setPlainText(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+        record_event(
+            "database",
+            f"Loaded profile {result.get('label') or result.get('id', '-')}",
+            severity="INFO",
+        )
+
+    def _confirm_delete(self, person_id: str) -> None:
+        self.person_id_input.setText(person_id)
+        self._delete_selected()
+
+    def _delete_selected(self) -> None:
+        person_id = self._person_id()
+        if not person_id:
             return
         confirm = QMessageBox.question(
-            self, "Confirm delete",
-            f"Delete person {pid[:12]}...?",
+            self,
+            "Delete profile",
+            f"Soft-delete profile {person_id[:16]}?",
             QMessageBox.Yes | QMessageBox.No,
         )
-        if confirm == QMessageBox.Yes:
-            self.get_btn.setEnabled(False)
-            self.delete_btn.setEnabled(False)
-            self._run(self.api.delete_person, pid)
+        if confirm != QMessageBox.Yes:
+            return
+        self.status_label.setText("Deleting profile...")
+        self._run(self.api.delete_person, person_id, on_success=self._on_deleted)
+
+    def _on_deleted(self, result: object) -> None:
+        self.refresh_btn.setEnabled(True)
+        self.get_btn.setEnabled(True)
+        self.delete_btn.setEnabled(True)
+        self.status_label.setText("")
+        record_event("database", "Profile soft-deleted", severity="WARN", details=str(result))
+        self._load_list()
+        self.detail_console.setPlainText(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+
+    def _export_detail(self) -> None:
+        content = self.detail_console.toPlainText().strip()
+        if not content:
+            show_warning(self, "Nothing to export", "Load a profile first.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export person detail",
+            "profile_detail.json",
+            "JSON (*.json);;Text (*.txt)",
+        )
+        if not path:
+            return
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        record_event("database", "Exported profile detail", severity="INFO", details=path)
+        self.status_label.setText(f"Exported to {path}")
 
     def showEvent(self, event) -> None:
-        # Автозагрузка при переключении на вкладку
         super().showEvent(event)
-        if self.table.rowCount() == 0:
+        if not self._all_persons:
             self._load_list()
+
+    def apply_global_filter(self, text: str) -> None:
+        self.filter_input.setText(text)

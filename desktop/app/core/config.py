@@ -12,3 +12,6 @@ _DEFAULT_URL = "http://127.0.0.1:8000"
 class DesktopSettings:
     base_url: str = os.getenv("API_BASE_URL", _DEFAULT_URL)
     request_timeout_sec: int = int(os.getenv("API_TIMEOUT_SEC", "15"))
+    camera_index: int = int(os.getenv("CAMERA_INDEX", "0"))
+    camera_preview_interval_ms: int = int(os.getenv("CAMERA_PREVIEW_INTERVAL_MS", "33"))
+    live_scan_interval_ms: int = int(os.getenv("LIVE_SCAN_INTERVAL_MS", "1200"))

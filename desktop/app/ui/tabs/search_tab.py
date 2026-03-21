@@ -1,340 +1,822 @@
-# Главная вкладка — поиск лица по индексу
 from __future__ import annotations
 
 import json
 import time
+from collections import defaultdict
+from typing import Any
 
-from PySide6.QtCore import Qt
+try:
+    import cv2
+except ImportError:  # pragma: no cover - runtime dependency check
+    cv2 = None
+
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from app.core.api_client import ApiClient
+from app.core.config import DesktopSettings
 from app.core.worker import ApiWorker
+from app.ui.activity import record_event
 from app.ui.dialogs import show_error, show_warning
-from app.ui.widgets import Card, DimLabel, ImagePreview, InfoRow, SectionHeading
-
-
-class NumericItem(QTableWidgetItem):
-    def __init__(self, value: float | None) -> None:
-        text = f"{value:.4f}" if value is not None else ""
-        super().__init__(text)
-        self.sort_value = value if value is not None else float("-inf")
-
-    def __lt__(self, other: QTableWidgetItem) -> bool:
-        if isinstance(other, NumericItem):
-            return self.sort_value < other.sort_value
-        return super().__lt__(other)
+from app.ui.widgets import (
+    ActionButton,
+    Card,
+    ConsoleView,
+    DimLabel,
+    ImageDropZone,
+    InfoRow,
+    LiveFaceLine,
+    ResultCard,
+    SectionHeading,
+    StatusPill,
+    shorten_path,
+)
 
 
 class SearchTab(QWidget):
     def __init__(self) -> None:
         super().__init__()
-        self.api = ApiClient()
+        self.settings = DesktopSettings()
+        self.api = ApiClient(self.settings)
         self._worker: ApiWorker | None = None
-        self._search_start: float = 0.0
+        self._request_started = 0.0
+        self._mode = "search"
+        self._request_origin = "manual"
+        self._camera = None
+        self._live_running = False
+        self._live_paused = False
+        self._latest_frame: Any | None = None
+        self._frame_for_request: Any | None = None
+        self._live_annotations: list[dict[str, Any]] = []
+        self._camera_timer = QTimer(self)
+        self._camera_timer.timeout.connect(self._update_camera_frame)
+        self._live_timer = QTimer(self)
+        self._live_timer.timeout.connect(self._submit_live_frame)
         self._build_ui()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(16)
+        root.setSpacing(18)
 
-        top_row = QHBoxLayout()
-        top_row.setSpacing(16)
+        header_row = QHBoxLayout()
+        title_col = QVBoxLayout()
+        title_col.setSpacing(4)
+        title = QLabel("Face Search")
+        title.setObjectName("brandTitle")
+        title.setStyleSheet("font-size: 36px;")
+        subtitle = DimLabel("Search, enroll, or compare both pipelines on the same image")
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        header_row.addLayout(title_col)
+        header_row.addStretch()
 
-        form_card = Card()
-        fc = form_card.body()
-        fc.addWidget(SectionHeading("Face query"))
+        modes_card = Card()
+        modes_body = modes_card.body()
+        modes_body.setContentsMargins(10, 10, 10, 10)
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(8)
 
-        fc.addWidget(DimLabel("Image file"))
-        file_row = QHBoxLayout()
-        file_row.setSpacing(8)
-        self.image_path = QLineEdit()
-        self.image_path.setPlaceholderText("Select a face image...")
-        self.image_path.setReadOnly(True)
-        file_row.addWidget(self.image_path, 1)
+        self.mode_group = QButtonGroup(self)
+        self.mode_search_btn = self._make_mode_button("Search", "search")
+        self.mode_enroll_btn = self._make_mode_button("Enroll", "enroll")
+        self.mode_compare_btn = self._make_mode_button("Compare", "compare")
+        for button in [self.mode_search_btn, self.mode_enroll_btn, self.mode_compare_btn]:
+            mode_row.addWidget(button)
+        modes_body.addLayout(mode_row)
+        header_row.addWidget(modes_card)
 
-        browse_btn = QPushButton("Browse")
-        browse_btn.setFixedWidth(80)
-        browse_btn.clicked.connect(self._browse)
-        file_row.addWidget(browse_btn)
-        fc.addLayout(file_row)
+        root.addLayout(header_row)
 
-        fc.addSpacing(6)
+        body_row = QHBoxLayout()
+        body_row.setSpacing(18)
 
-        controls_row = QHBoxLayout()
-        controls_row.setSpacing(16)
+        left_card = Card()
+        left = left_card.body()
+        left.addWidget(SectionHeading("Input"))
 
-        k_group = QHBoxLayout()
-        k_group.setSpacing(8)
-        k_group.addWidget(DimLabel("Top K"))
-        self.k_input = QSpinBox()
-        self.k_input.setRange(1, 100)
-        self.k_input.setValue(5)
-        self.k_input.setFixedWidth(70)
-        k_group.addWidget(self.k_input)
-        controls_row.addLayout(k_group)
+        self.drop_zone = ImageDropZone()
+        self.drop_zone.fileDropped.connect(self._set_image_path)
+        left.addWidget(self.drop_zone, 1)
 
-        mode_group = QHBoxLayout()
-        mode_group.setSpacing(8)
-        mode_group.addWidget(DimLabel("Mode"))
+        self.file_label = DimLabel("No image selected")
+        left.addWidget(self.file_label)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(10)
+
         self.pipeline_combo = QComboBox()
-        self.pipeline_combo.addItem("Pretrained", "pretrained")
-        self.pipeline_combo.addItem("Custom", "custom")
-        self.pipeline_combo.addItem("Compare both", "compare")
-        self.pipeline_combo.setMinimumWidth(150)
-        mode_group.addWidget(self.pipeline_combo)
-        controls_row.addLayout(mode_group)
+        self.pipeline_combo.addItem("PRETRAINED", "pretrained")
+        self.pipeline_combo.addItem("CUSTOM", "custom")
+        self.pipeline_combo.addItem("BOTH", "both")
+        self.pipeline_combo.setMinimumWidth(170)
+        controls.addWidget(self.pipeline_combo)
 
-        controls_row.addStretch()
-        fc.addLayout(controls_row)
+        self.k_input = QSpinBox()
+        self.k_input.setRange(1, 20)
+        self.k_input.setValue(5)
+        self.k_input.setPrefix("TOP K  ")
+        self.k_input.setMinimumWidth(120)
+        controls.addWidget(self.k_input)
 
-        fc.addSpacing(10)
+        self.label_input = QLineEdit()
+        self.label_input.setPlaceholderText("Label")
+        self.label_input.setVisible(False)
+        controls.addWidget(self.label_input, 1)
 
-        self.search_btn = QPushButton("Search")
-        self.search_btn.setObjectName("primary")
-        self.search_btn.setFixedHeight(36)
-        self.search_btn.clicked.connect(self._search)
-        fc.addWidget(self.search_btn)
-        fc.addStretch()
+        left.addLayout(controls)
 
-        top_row.addWidget(form_card, 3)
+        actions = QHBoxLayout()
+        actions.setSpacing(10)
+        self.browse_btn = ActionButton("Browse image")
+        self.browse_btn.clicked.connect(self._browse)
+        self.clear_btn = ActionButton("Clear image")
+        self.clear_btn.clicked.connect(self._clear_image)
+        self.capture_btn = ActionButton("Start camera")
+        self.capture_btn.clicked.connect(self._toggle_camera)
+        actions.addWidget(self.browse_btn)
+        actions.addWidget(self.clear_btn)
+        actions.addWidget(self.capture_btn)
+        left.addLayout(actions)
+
+        live_row = QHBoxLayout()
+        live_row.setSpacing(10)
+        self.live_status = StatusPill("CAMERA OFF", state="idle")
+        live_row.addWidget(self.live_status)
+        self.camera_combo = QComboBox()
+        for idx in range(5):
+            self.camera_combo.addItem(f"CAMERA {idx}", idx)
+        self.camera_combo.setCurrentIndex(min(max(self.settings.camera_index, 0), 4))
+        live_row.addWidget(self.camera_combo)
+        self.live_preset = QComboBox()
+        self.live_preset.addItem("FAST", "fast")
+        self.live_preset.addItem("BALANCED", "balanced")
+        self.live_preset.addItem("SAFE", "safe")
+        self.live_preset.addItem("CUSTOM", "custom")
+        self.live_preset.setCurrentIndex(1)
+        self.live_preset.currentIndexChanged.connect(self._on_live_preset_changed)
+        live_row.addWidget(self.live_preset)
+        self.live_interval = QSpinBox()
+        self.live_interval.setRange(500, 5000)
+        self.live_interval.setSingleStep(100)
+        self.live_interval.setValue(self.settings.live_scan_interval_ms)
+        self.live_interval.setSuffix(" ms")
+        self.live_interval.setPrefix("SCAN  ")
+        self.live_interval.valueChanged.connect(self._update_live_interval)
+        live_row.addWidget(self.live_interval)
+        self.pause_btn = ActionButton("Pause scan")
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.clicked.connect(self._toggle_pause)
+        live_row.addWidget(self.pause_btn)
+        live_row.addStretch()
+        left.addLayout(live_row)
+
+        self.execute_btn = ActionButton("Search", primary=True)
+        self.execute_btn.clicked.connect(self._execute)
+        left.addWidget(self.execute_btn)
+
+        body_row.addWidget(left_card, 3)
 
         right_col = QVBoxLayout()
-        right_col.setSpacing(12)
+        right_col.setSpacing(16)
 
-        preview_card = Card()
-        pc = preview_card.body()
-        pc.setAlignment(Qt.AlignCenter)
-        self.preview = ImagePreview(160)
-        pc.addWidget(self.preview, 0, Qt.AlignCenter)
-        right_col.addWidget(preview_card)
+        status_card = Card()
+        sc = status_card.body()
+        top = QHBoxLayout()
+        top.addWidget(SectionHeading("Results"))
+        top.addStretch()
+        self.matches_pill = StatusPill("0 MATCHES", state="idle")
+        top.addWidget(self.matches_pill)
+        sc.addLayout(top)
 
-        self.decision_badge = QLabel("—")
-        self.decision_badge.setAlignment(Qt.AlignCenter)
-        self.decision_badge.setFixedHeight(32)
-        self.decision_badge.setStyleSheet(
-            "background-color: #2c2d31; color: #8b8d93; border-radius: 4px;"
-            " font-weight: 700; font-size: 15px;"
-        )
-        right_col.addWidget(self.decision_badge)
-
-        right_col.addStretch()
-        top_row.addLayout(right_col, 1)
-
-        root.addLayout(top_row)
-
-        summary_card = Card()
-        sc = summary_card.body()
-        info_row = QHBoxLayout()
-        info_row.setSpacing(24)
-        self.info_score = InfoRow("Best score")
-        self.info_threshold = InfoRow("Threshold/Fastest")
-        self.info_latency = InfoRow("Latency")
-        self.info_matches = InfoRow("Matches")
-        for widget in [self.info_score, self.info_threshold, self.info_latency, self.info_matches]:
-            info_row.addWidget(widget)
-        info_row.addStretch()
-        sc.addLayout(info_row)
-        root.addWidget(summary_card)
+        summary_grid = QHBoxLayout()
+        summary_grid.setSpacing(14)
+        self.info_mode = InfoRow("Mode", "-")
+        self.info_best = InfoRow("Best score", "-")
+        self.info_latency = InfoRow("Latency", "-")
+        self.info_faces = InfoRow("Faces / hits", "-")
+        for info in [self.info_mode, self.info_best, self.info_latency, self.info_faces]:
+            summary_grid.addWidget(info)
+        sc.addLayout(summary_grid)
+        right_col.addWidget(status_card)
 
         results_card = Card()
         rc = results_card.body()
-        rc.addWidget(SectionHeading("Search results"))
+        rc.addWidget(SectionHeading("Current frame"))
+        self.frame_faces_layout = QVBoxLayout()
+        self.frame_faces_layout.setContentsMargins(0, 0, 0, 0)
+        self.frame_faces_layout.setSpacing(8)
+        self.frame_faces_layout.addWidget(DimLabel("No live detections yet."))
+        rc.addLayout(self.frame_faces_layout)
+        rc.addSpacing(6)
+        rc.addWidget(SectionHeading("Matches"))
+        self.results_scroll = QScrollArea()
+        self.results_scroll.setWidgetResizable(True)
+        self.results_scroll.setFrameShape(QScrollArea.NoFrame)
+        self.results_host = QWidget()
+        self.results_layout = QVBoxLayout(self.results_host)
+        self.results_layout.setContentsMargins(0, 0, 0, 0)
+        self.results_layout.setSpacing(10)
+        self.results_layout.addWidget(DimLabel("No search results yet."))
+        self.results_layout.addStretch()
+        self.results_scroll.setWidget(self.results_host)
+        rc.addWidget(self.results_scroll, 1)
+        right_col.addWidget(results_card, 1)
 
-        self.table = QTableWidget(0, 7)
-        self.table.setHorizontalHeaderLabels(
-            ["Face", "Det. score", "Pipeline", "Person ID", "Label", "Score", "Distance"]
-        )
-        self.table.setSortingEnabled(True)
-        self.table.setAlternatingRowColors(True)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        hdr = self.table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        hdr.setSectionResizeMode(3, QHeaderView.Stretch)
-        hdr.setSectionResizeMode(4, QHeaderView.Stretch)
-        hdr.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        hdr.setSectionResizeMode(6, QHeaderView.ResizeToContents)
-        rc.addWidget(self.table)
+        console_card = Card()
+        cc = console_card.body()
+        cc.addWidget(SectionHeading("Response"))
+        self.console = ConsoleView("API responses will appear here.")
+        self.console.setMinimumHeight(180)
+        cc.addWidget(self.console)
+        right_col.addWidget(console_card, 1)
 
-        rc.addWidget(DimLabel("Compare details"))
-        self.compare_view = QTextEdit()
-        self.compare_view.setReadOnly(True)
-        self.compare_view.setMaximumHeight(160)
-        self.compare_view.setPlaceholderText("Compare mode will show both model latencies here.")
-        rc.addWidget(self.compare_view)
+        body_row.addLayout(right_col, 2)
 
-        root.addWidget(results_card, 1)
+        root.addLayout(body_row, 1)
+        self._set_mode("search")
+
+    def _make_mode_button(self, text: str, mode: str) -> QPushButton:
+        button = QPushButton(text.upper())
+        button.setObjectName("toolbarButton")
+        button.setCheckable(True)
+        button.clicked.connect(lambda: self._set_mode(mode))
+        self.mode_group.addButton(button)
+        return button
+
+    def _set_mode(self, mode: str) -> None:
+        if mode == "enroll" and self._live_running:
+            self._stop_camera()
+        self._mode = mode
+        mapping = {
+            "search": self.mode_search_btn,
+            "enroll": self.mode_enroll_btn,
+            "compare": self.mode_compare_btn,
+        }
+        mapping[mode].setChecked(True)
+
+        self.label_input.setVisible(mode == "enroll")
+        self.k_input.setVisible(mode != "enroll")
+        self.capture_btn.setEnabled(mode != "enroll")
+        self.pause_btn.setEnabled(mode != "enroll" and self._live_running)
+
+        self.pipeline_combo.clear()
+        if mode == "compare":
+            self.pipeline_combo.addItem("DUAL PIPELINE", "compare")
+            self.pipeline_combo.setEnabled(False)
+            self.execute_btn.setText("Compare models")
+        elif mode == "enroll":
+            self.pipeline_combo.addItem("PRETRAINED", "pretrained")
+            self.pipeline_combo.addItem("CUSTOM", "custom")
+            self.pipeline_combo.addItem("BOTH", "both")
+            self.pipeline_combo.setEnabled(True)
+            self.execute_btn.setText("Enroll person")
+        else:
+            self.pipeline_combo.addItem("PRETRAINED", "pretrained")
+            self.pipeline_combo.addItem("CUSTOM", "custom")
+            self.pipeline_combo.setEnabled(True)
+            self.execute_btn.setText("Search")
+
+        if self.live_preset.currentData() != "custom":
+            self._on_live_preset_changed()
+        self.info_mode.set_value(mode.upper())
+
+    def _set_image_path(self, path: str) -> None:
+        self.drop_zone.load(path)
+        self.file_label.setText(shorten_path(path, max_length=72))
+        self.file_label.setToolTip(path)
+        self.file_label.setProperty("selected_path", path)
+        if self._live_running:
+            self._stop_camera()
+
+    def _image_path(self) -> str:
+        return str(self.file_label.property("selected_path") or "")
 
     def _browse(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select image", "",
+            self,
+            "Select image",
+            "",
             "Images (*.jpg *.jpeg *.png *.bmp *.webp);;All files (*.*)",
         )
         if path:
-            self.image_path.setText(path)
-            self.preview.load(path)
+            self._set_image_path(path)
 
-    def _search(self) -> None:
-        path = self.image_path.text().strip()
+    def _clear_image(self) -> None:
+        if self._live_running:
+            self._stop_camera()
+        self.drop_zone.clear_preview()
+        self.file_label.setText("No image selected")
+        self.file_label.setToolTip("")
+        self.file_label.setProperty("selected_path", "")
+        self.console.clear()
+        self._clear_results()
+        self._clear_frame_faces()
+        self.matches_pill.set_state("idle", "0 MATCHES")
+        self.info_best.set_value("-")
+        self.info_latency.set_value("-")
+        self.info_faces.set_value("-")
+
+    def _execute(self) -> None:
+        path = self._image_path()
         if not path:
-            show_warning(self, "Missing", "Select an image file")
+            show_warning(self, "Missing image", "Select or drop an image first.")
             return
 
-        mode = self.pipeline_combo.currentData()
-        k = self.k_input.value()
-        self.search_btn.setEnabled(False)
-        self._search_start = time.perf_counter()
+        if self._mode == "enroll" and not self.label_input.text().strip():
+            show_warning(self, "Missing label", "Enroll mode expects a profile label.")
+            return
 
-        if mode == "compare":
-            self._worker = ApiWorker(self.api.search_compare, path, k, parent=self)
+        self._dispatch_request(path, origin="manual", source_label=path)
+
+    def _dispatch_request(self, image_source: str | bytes, *, origin: str, source_label: str) -> None:
+        if self._worker is not None and self._worker.isRunning():
+            return
+
+        self._request_origin = origin
+        self._request_started = time.perf_counter()
+        self.execute_btn.setEnabled(origin != "manual")
+
+        if origin == "live":
+            self.live_status.set_state("warn", "SCANNING...")
+        record_event("search", f"Started {self._mode} request", severity="INFO", meta={"path": source_label})
+
+        if self._mode == "compare":
+            self._worker = ApiWorker(self.api.search_compare, image_source, self.k_input.value(), parent=self)
+        elif self._mode == "enroll":
+            self._worker = ApiWorker(
+                self.api.enroll,
+                image_source,
+                self.label_input.text().strip(),
+                self.pipeline_combo.currentData(),
+                parent=self,
+            )
         else:
-            self._worker = ApiWorker(self.api.search, path, k, mode, parent=self)
+            self._worker = ApiWorker(
+                self.api.search,
+                image_source,
+                self.k_input.value(),
+                self.pipeline_combo.currentData(),
+                parent=self,
+            )
+
         self._worker.finished.connect(self._on_success)
         self._worker.failed.connect(self._on_error)
         self._worker.start()
 
-    def _set_badge(self, state: str) -> None:
-        if state == "match":
-            self.decision_badge.setText("MATCH")
-            self.decision_badge.setObjectName("badgeMatch")
-        elif state == "compare":
-            self.decision_badge.setText("COMPARE")
-            self.decision_badge.setObjectName("badgeCompare")
+    def _on_success(self, payload: object) -> None:
+        origin = self._request_origin
+        self._worker = None
+        self.execute_btn.setEnabled(True)
+        latency_ms = (time.perf_counter() - self._request_started) * 1000
+        self.console.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+
+        if self._mode == "enroll":
+            self._render_enroll(payload, latency_ms)
+        elif self._mode == "compare":
+            self._render_compare(payload, latency_ms)
         else:
-            self.decision_badge.setText("UNKNOWN")
-            self.decision_badge.setObjectName("badgeUnknown")
-        self.decision_badge.style().unpolish(self.decision_badge)
-        self.decision_badge.style().polish(self.decision_badge)
+            self._render_search(payload, latency_ms)
 
-    def _populate_rows(self, rows: list[dict]) -> None:
-        self.table.setSortingEnabled(False)
-        self.table.setRowCount(len(rows))
-        for row_idx, result in enumerate(rows):
-            face_index = int(result.get("face_index", 0)) + 1
-            self.table.setItem(row_idx, 0, QTableWidgetItem(str(face_index)))
-            self.table.setItem(row_idx, 1, NumericItem(result.get("detection_score")))
-            self.table.setItem(row_idx, 2, QTableWidgetItem(result.get("pipeline", "")))
-            self.table.setItem(row_idx, 3, QTableWidgetItem(result.get("person_id", "")))
-            self.table.setItem(row_idx, 4, QTableWidgetItem(result.get("label") or ""))
-            self.table.setItem(row_idx, 5, NumericItem(result.get("score")))
-            self.table.setItem(row_idx, 6, NumericItem(result.get("distance")))
-        self.table.setSortingEnabled(True)
-        self.table.sortItems(5, Qt.DescendingOrder)
+        if origin == "live":
+            if self._live_paused:
+                self.live_status.set_state("warn", f"PAUSED  {latency_ms:.0f} ms")
+            else:
+                self.live_status.set_state("ok", f"LIVE  {latency_ms:.0f} ms")
+            self._update_live_annotations(payload)
 
-    def _on_success(self, response: object) -> None:
-        self.search_btn.setEnabled(True)
-        request_latency_ms = (time.perf_counter() - self._search_start) * 1000
+    def _render_enroll(self, payload: object, latency_ms: float) -> None:
+        self._clear_results()
+        if not isinstance(payload, dict):
+            return
+        self.matches_pill.set_state("ok", "PROFILE REGISTERED")
+        self.info_mode.set_value(f"ENROLL / {str(payload.get('pipeline', '-')).upper()}")
+        self.info_best.set_value(str(payload.get("person_id", "-"))[:18])
+        self.info_latency.set_value(f"{latency_ms:.0f} ms")
+        self.info_faces.set_value(str(payload.get("faces_detected", 0)))
 
-        if isinstance(response, dict) and "comparisons" in response:
-            self._render_compare(response, request_latency_ms)
-        else:
-            self._render_single(response, request_latency_ms)
-
-    def _render_single(self, response: object, request_latency_ms: float) -> None:
-        if isinstance(response, dict):
-            results = response.get("results", [])
-            decision = response.get("decision", "unknown")
-            threshold = response.get("threshold_used")
-            best_score = response.get("best_score")
-            pipeline = response.get("pipeline") or ""
-            model_latency = response.get("latency_ms")
-            faces_detected = int(response.get("faces_detected", 0))
-            matched_faces = int(response.get("matched_faces", 0))
-        else:
-            results, decision, threshold, best_score, pipeline, model_latency = [], "unknown", None, None, "", None
-            faces_detected = 0
-            matched_faces = 0
-
-        self._set_badge(decision)
-        self.info_score.set_value(f"{best_score:.4f}" if best_score is not None else "—")
-        self.info_threshold.set_value(f"{threshold:.4f}" if threshold is not None else "—")
-        if model_latency is not None:
-            self.info_latency.set_value(f"{model_latency:.0f} ms model / {request_latency_ms:.0f} ms req")
-        else:
-            self.info_latency.set_value(f"{request_latency_ms:.0f} ms")
-        self.info_matches.set_value(f"{matched_faces}/{faces_detected} faces")
-
-        rows = []
-        for result in results:
-            row = dict(result)
-            row["pipeline"] = row.get("pipeline") or pipeline
-            rows.append(row)
-        self._populate_rows(rows)
-        self.compare_view.setPlainText(
-            json.dumps(
-                {
-                    "pipeline": pipeline,
-                    "faces_detected": faces_detected,
-                    "matched_faces": matched_faces,
-                    "latency_ms": model_latency,
-                    "threshold_used": threshold,
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
+        result = {
+            "label": self.label_input.text().strip() or "REGISTERED",
+            "person_id": payload.get("person_id", ""),
+            "pipeline": payload.get("pipeline", ""),
+            "score": 1.0,
+            "distance": 0.0,
+            "face_index": 0,
+        }
+        card = ResultCard()
+        card.set_result(result)
+        self.results_layout.insertWidget(0, card)
+        record_event(
+            "enroll",
+            f"Registered {self.label_input.text().strip() or 'profile'}",
+            severity="INFO",
+            details=f"person_id={payload.get('person_id', '-')}",
         )
 
-    def _render_compare(self, response: dict, request_latency_ms: float) -> None:
-        comparisons = response.get("comparisons", [])
-        rows: list[dict] = []
-        summary: list[dict] = []
+    def _render_search(self, payload: object, latency_ms: float) -> None:
+        self._clear_results()
+        if not isinstance(payload, dict):
+            return
 
-        best_parts: list[str] = []
-        latency_parts: list[str] = []
+        results = payload.get("results", [])
+        best_score = payload.get("best_score")
+        matched_faces = payload.get("matched_faces", 0)
+        faces_detected = payload.get("faces_detected", 0)
+        decision = payload.get("decision", "unknown")
+        pill_state = "ok" if decision == "match" else "warn"
+
+        self.matches_pill.set_state(pill_state, f"{len(results)} MATCHES")
+        self.info_mode.set_value(str(payload.get("pipeline", "-")).upper())
+        self.info_best.set_value(f"{best_score:.4f}" if best_score is not None else "-")
+        self.info_latency.set_value(
+            f"{payload.get('latency_ms', latency_ms):.0f} ms"
+        )
+        self.info_faces.set_value(f"{matched_faces}/{faces_detected}")
+
+        if not results:
+            self.results_layout.insertWidget(0, DimLabel("No matches returned for this query."))
+        else:
+            for rank, result in enumerate(results, start=1):
+                card = ResultCard()
+                card.set_result(result, rank=rank)
+                self.results_layout.insertWidget(rank - 1, card)
+
+        record_event(
+            "search",
+            f"Search finished with {len(results)} results",
+            severity="INFO",
+            details=f"decision={decision} best_score={best_score}",
+        )
+
+    def _render_compare(self, payload: object, latency_ms: float) -> None:
+        self._clear_results()
+        if not isinstance(payload, dict):
+            return
+
+        comparisons = payload.get("comparisons", [])
+        fastest = payload.get("fastest_pipeline", "-")
+        merged_results: list[dict] = []
+        best_summary: list[str] = []
+
         for item in comparisons:
             pipeline = item.get("pipeline", "?")
-            best_score = item.get("best_score")
-            latency_ms = item.get("latency_ms")
-            best_parts.append(
-                f"{pipeline}={best_score:.4f}" if best_score is not None else f"{pipeline}=—"
-            )
-            latency_parts.append(
-                f"{pipeline}={latency_ms:.0f} ms" if latency_ms is not None else f"{pipeline}=—"
-            )
-            summary.append(
-                {
-                    "pipeline": pipeline,
-                    "model": item.get("model"),
-                    "latency_ms": latency_ms,
-                    "decision": item.get("decision"),
-                    "best_score": best_score,
-                    "faces_detected": item.get("faces_detected"),
-                    "matched_faces": item.get("matched_faces"),
-                    "error": item.get("error"),
-                    "top1": (item.get("results") or [{}])[0].get("label") if item.get("results") else None,
-                }
-            )
+            best = item.get("best_score")
+            best_summary.append(f"{pipeline}={best:.4f}" if best is not None else f"{pipeline}=-")
             for result in item.get("results", []):
                 row = dict(result)
                 row["pipeline"] = pipeline
-                rows.append(row)
+                merged_results.append(row)
 
-        self._set_badge("compare")
-        self.info_score.set_value(" / ".join(best_parts) if best_parts else "—")
-        self.info_threshold.set_value(response.get("fastest_pipeline") or "—")
-        self.info_latency.set_value(" / ".join(latency_parts) if latency_parts else f"{request_latency_ms:.0f} ms")
-        total_faces = sum(int(item.get("faces_detected", 0)) for item in comparisons)
-        self.info_matches.set_value(f"{len(rows)} hits / {total_faces} faces")
-        self._populate_rows(rows)
-        self.compare_view.setPlainText(json.dumps(summary, indent=2, ensure_ascii=False))
+        self.matches_pill.set_state("warn", f"{len(merged_results)} TOTAL HITS")
+        self.info_mode.set_value(f"COMPARE / FASTEST {str(fastest).upper()}")
+        self.info_best.set_value(" | ".join(best_summary) if best_summary else "-")
+        self.info_latency.set_value(f"{latency_ms:.0f} ms request")
+        self.info_faces.set_value(str(sum(item.get("faces_detected", 0) for item in comparisons)))
+
+        if not merged_results:
+            self.results_layout.insertWidget(0, DimLabel("Compare completed, but no matches were returned."))
+        else:
+            for rank, result in enumerate(
+                sorted(merged_results, key=lambda item: item.get("score", 0.0), reverse=True),
+                start=1,
+            ):
+                card = ResultCard()
+                card.set_result(result, rank=rank)
+                self.results_layout.insertWidget(rank - 1, card)
+
+        record_event(
+            "compare",
+            f"Compared pipelines, fastest={fastest}",
+            severity="INFO",
+            details=", ".join(best_summary),
+        )
+
+    def _clear_results(self) -> None:
+        while self.results_layout.count():
+            item = self.results_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.results_layout.addStretch()
 
     def _on_error(self, error: str) -> None:
-        self.search_btn.setEnabled(True)
-        show_error(self, "Search failed", error)
+        origin = self._request_origin
+        self._worker = None
+        self.execute_btn.setEnabled(True)
+        self.matches_pill.set_state("error", "REQUEST FAILED")
+        record_event("search", "Request failed", severity="ERROR", details=error)
+        self.console.setPlainText(error)
+        if origin == "live":
+            self.live_status.set_state("error", "LIVE ERROR")
+            return
+        show_error(self, "Operation failed", error)
+
+    def apply_global_filter(self, text: str) -> None:
+        query = text.strip().lower()
+        for index in range(self.results_layout.count()):
+            item = self.results_layout.itemAt(index)
+            widget = item.widget()
+            if widget is None:
+                continue
+            if not isinstance(widget, ResultCard):
+                widget.setVisible(True)
+                continue
+            haystack = " ".join(
+                [
+                    widget.title.text(),
+                    widget.subtitle.text(),
+                    widget.meta.text(),
+                    widget.pipeline.text(),
+                ]
+            ).lower()
+            widget.setVisible(not query or query in haystack)
+
+    def _update_live_interval(self, value: int) -> None:
+        if self.live_preset.currentData() != "custom":
+            self.live_preset.blockSignals(True)
+            self.live_preset.setCurrentIndex(3)
+            self.live_preset.blockSignals(False)
+        if self._live_timer.isActive():
+            self._live_timer.start(value)
+
+    def _on_live_preset_changed(self) -> None:
+        preset = self.live_preset.currentData()
+        values = {
+            "fast": 800 if self._mode != "compare" else 1200,
+            "balanced": 1200 if self._mode != "compare" else 1800,
+            "safe": 2000 if self._mode != "compare" else 2600,
+        }
+        if preset in values:
+            self.live_interval.blockSignals(True)
+            self.live_interval.setValue(values[preset])
+            self.live_interval.blockSignals(False)
+            if self._live_timer.isActive():
+                self._live_timer.start(self.live_interval.value())
+
+    def _toggle_camera(self) -> None:
+        if self._live_running:
+            self._stop_camera()
+            return
+        self._start_camera()
+
+    def _toggle_pause(self) -> None:
+        if not self._live_running:
+            return
+        if self._live_paused:
+            self._resume_live_scan()
+        else:
+            self._pause_live_scan()
+
+    def _start_camera(self) -> None:
+        if self._mode == "enroll":
+            show_warning(self, "Camera unavailable", "Live camera mode is available only for Search or Compare.")
+            return
+        if cv2 is None:
+            show_error(self, "Camera unavailable", "OpenCV is not installed in the desktop environment.")
+            return
+
+        backends = [cv2.CAP_DSHOW, cv2.CAP_ANY] if hasattr(cv2, "CAP_DSHOW") else [cv2.CAP_ANY]
+        camera = None
+        selected_index = int(self.camera_combo.currentData())
+        for backend in backends:
+            candidate = cv2.VideoCapture(selected_index, backend)
+            if candidate.isOpened():
+                camera = candidate
+                break
+            candidate.release()
+        if camera is None:
+            show_error(self, "Camera unavailable", "Could not open the default webcam.")
+            return
+
+        self._camera = camera
+        self._latest_frame = None
+        self._frame_for_request = None
+        self._live_annotations = []
+        self._live_running = True
+        self._live_paused = False
+        self.capture_btn.setText("Stop camera")
+        self.browse_btn.setEnabled(False)
+        self.camera_combo.setEnabled(False)
+        self.pause_btn.setEnabled(True)
+        self.pause_btn.setText("Pause scan")
+        self.live_status.set_state("ok", "LIVE CAMERA")
+        self._camera_timer.start(self.settings.camera_preview_interval_ms)
+        self._live_timer.start(self.live_interval.value())
+        record_event(
+            "search",
+            f"Started live camera {self._mode}",
+            severity="INFO",
+            details=f"camera={selected_index} interval={self.live_interval.value()}",
+        )
+
+    def _stop_camera(self) -> None:
+        self._live_timer.stop()
+        self._camera_timer.stop()
+        self._live_running = False
+        self._live_paused = False
+        self._latest_frame = None
+        self._frame_for_request = None
+        self._live_annotations = []
+        if self._camera is not None:
+            self._camera.release()
+            self._camera = None
+        self.capture_btn.setText("Start camera")
+        self.browse_btn.setEnabled(True)
+        self.camera_combo.setEnabled(True)
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setText("Pause scan")
+        self.live_status.set_state("idle", "CAMERA OFF")
+        self.drop_zone.clear_preview()
+        self._clear_frame_faces()
+        record_event("search", "Stopped live camera search", severity="INFO")
+
+    def _pause_live_scan(self) -> None:
+        self._live_paused = True
+        self._live_timer.stop()
+        self.pause_btn.setText("Resume scan")
+        self.live_status.set_state("warn", "SCAN PAUSED")
+        record_event("search", "Paused live camera scan", severity="INFO")
+
+    def _resume_live_scan(self) -> None:
+        self._live_paused = False
+        self._live_timer.start(self.live_interval.value())
+        self.pause_btn.setText("Pause scan")
+        self.live_status.set_state("ok", "LIVE CAMERA")
+        record_event("search", "Resumed live camera scan", severity="INFO")
+
+    def _update_camera_frame(self) -> None:
+        if self._camera is None:
+            return
+        ok, frame = self._camera.read()
+        if not ok:
+            self.live_status.set_state("error", "CAMERA READ FAILED")
+            return
+        self._latest_frame = frame
+        self._frame_for_request = frame.copy()
+        self._show_frame(self._draw_live_annotations(frame.copy()))
+
+    def _submit_live_frame(self) -> None:
+        if not self._live_running or self._frame_for_request is None:
+            return
+        if self._worker is not None and self._worker.isRunning():
+            return
+        encoded = self._encode_frame(self._frame_for_request)
+        if encoded is None:
+            self.live_status.set_state("error", "ENCODE FAILED")
+            return
+        self._dispatch_request(encoded, origin="live", source_label="camera")
+
+    def _encode_frame(self, frame: Any) -> bytes | None:
+        if cv2 is None:
+            return None
+        ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        if not ok:
+            return None
+        return buffer.tobytes()
+
+    def _show_frame(self, frame: Any) -> None:
+        pixmap = self._frame_to_pixmap(frame)
+        if pixmap is not None:
+            self.drop_zone.set_pixmap(pixmap)
+            self.file_label.setText("Live camera")
+            self.file_label.setToolTip("Webcam stream")
+            self.file_label.setProperty("selected_path", "")
+
+    def _frame_to_pixmap(self, frame: Any) -> QPixmap | None:
+        if cv2 is None:
+            return None
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        height, width, channels = rgb.shape
+        bytes_per_line = channels * width
+        image = QImage(rgb.data, width, height, bytes_per_line, QImage.Format_RGB888).copy()
+        return QPixmap.fromImage(image)
+
+    def _draw_live_annotations(self, frame: Any) -> Any:
+        if cv2 is None or not self._live_annotations:
+            return frame
+        for annotation in self._live_annotations:
+            bbox = annotation.get("face_bbox")
+            if not bbox or len(bbox) != 4:
+                continue
+            x1, y1, x2, y2 = [int(max(0, value)) for value in bbox]
+            quality = annotation.get("quality", "unknown")
+            color = self._overlay_color(quality)
+            label = annotation.get("label") or "Unknown"
+            score = annotation.get("score")
+            pipeline = annotation.get("pipeline")
+            parts = [label]
+            if pipeline:
+                parts.append(str(pipeline))
+            if score is not None:
+                parts.append(f"{float(score):.3f}")
+            text = " | ".join(parts)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.rectangle(
+                frame,
+                (x1, max(0, y1 - 26)),
+                (min(frame.shape[1] - 1, x1 + max(120, len(text) * 7)), y1),
+                color,
+                -1,
+            )
+            cv2.putText(
+                frame,
+                text,
+                (x1 + 4, max(14, y1 - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (4, 16, 23),
+                1,
+                cv2.LINE_AA,
+            )
+        return frame
+
+    def _update_live_annotations(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        self._live_annotations = self._extract_annotations(payload)
+        self._render_frame_faces(self._live_annotations)
+        if self._latest_frame is not None:
+            self._show_frame(self._draw_live_annotations(self._latest_frame.copy()))
+
+    def _overlay_color(self, quality: str) -> tuple[int, int, int]:
+        if quality == "match":
+            return (55, 243, 187)
+        if quality == "weak":
+            return (115, 204, 255)
+        return (136, 107, 255)
+
+    def _extract_annotations(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        thresholds: dict[int, float] = {}
+
+        if "comparisons" in payload:
+            for comparison in payload.get("comparisons", []):
+                pipeline = comparison.get("pipeline")
+                threshold = float(comparison.get("threshold_used", 0.0))
+                for result in comparison.get("results", []):
+                    row = dict(result)
+                    row["pipeline"] = pipeline
+                    grouped[int(row.get("face_index", 0))].append(row)
+                    thresholds[int(row.get("face_index", 0))] = max(
+                        threshold, thresholds.get(int(row.get("face_index", 0)), 0.0)
+                    )
+        else:
+            threshold = float(payload.get("threshold_used", 0.0))
+            for result in payload.get("results", []):
+                grouped[int(result.get("face_index", 0))].append(dict(result))
+                thresholds[int(result.get("face_index", 0))] = threshold
+
+        annotations: list[dict[str, Any]] = []
+        for face_index, results in grouped.items():
+            best = max(results, key=lambda item: float(item.get("score", 0.0)))
+            best["face_index"] = face_index
+            threshold = thresholds.get(face_index, 0.0)
+            score = float(best.get("score", 0.0))
+            if score >= threshold and threshold > 0:
+                best["quality"] = "match"
+            elif score >= max(0.2, threshold * 0.7):
+                best["quality"] = "weak"
+            else:
+                best["quality"] = "unknown"
+            annotations.append(best)
+        return sorted(annotations, key=lambda item: int(item.get("face_index", 0)))
+
+    def _clear_frame_faces(self) -> None:
+        while self.frame_faces_layout.count():
+            item = self.frame_faces_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.frame_faces_layout.addWidget(DimLabel("No live detections yet."))
+
+    def _render_frame_faces(self, faces: list[dict[str, Any]]) -> None:
+        while self.frame_faces_layout.count():
+            item = self.frame_faces_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        if not faces:
+            self.frame_faces_layout.addWidget(DimLabel("No matched faces in the latest frame."))
+            return
+        for face in faces:
+            widget = LiveFaceLine()
+            widget.set_face(face)
+            self.frame_faces_layout.addWidget(widget)
+
+    def hideEvent(self, event) -> None:
+        super().hideEvent(event)
+        if self._live_running:
+            self._stop_camera()
