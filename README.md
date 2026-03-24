@@ -5,7 +5,7 @@
 ## Что есть в проекте
 
 - `pretrained` pipeline: baseline на `buffalo_l` через ONNX
-- `custom` pipeline: твоя PyTorch модель
+- `custom` pipeline: дополнительная ONNX модель (из `model_bundle`)
 - FastAPI backend
 - FAISS индекс отдельно для каждого pipeline
 - PostgreSQL через Docker Compose или SQLite локально
@@ -65,14 +65,15 @@ docker compose up --build
 
 Если хочешь включить custom pipeline в Docker:
 
-1. положи checkpoint в `training/outputs/`
+1. положи ONNX-модели в `model_bundle/models/`
 2. открой `.env.docker`
 3. выставь:
 
 ```env
 ENABLE_CUSTOM_PIPELINE=true
-CUSTOM_BACKEND=torch
-TORCH_MODEL_PATH=/app/training/outputs/checkpoint_epoch_XXX.pth
+CUSTOM_BACKEND=onnx
+ONNX_DETECTOR_PATH=/app/model_bundle/models/det_10g.onnx
+ONNX_EMBEDDER_PATH=/app/model_bundle/models/w600k_r50.onnx
 ```
 
 Проверка:

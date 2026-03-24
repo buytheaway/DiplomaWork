@@ -19,7 +19,7 @@ services:
     build:
       context: ./backend
       args:
-        ML_BACKEND: dual
+        ML_BACKEND: onnx
     env_file:
       - .env.docker
     ports:
@@ -31,6 +31,7 @@ services:
       - ./backend/data:/app/data
       - ./models:/app/models:ro
       - ./training/outputs:/app/training/outputs:ro
+      - ./model_bundle:/app/model_bundle:ro
 
 volumes:
   db_data:
