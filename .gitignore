@@ -57,3 +57,5 @@ training/checkpoints/
 training/config.eval.yaml
 tmp/
 backend/tmp/
+docs
+training
