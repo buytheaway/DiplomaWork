@@ -54,7 +54,14 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         state_dict = state.get("state_dict", state)
         self.model.load_state_dict(state_dict, strict=False)
 
-        if settings.detection_backend == "opencv":
+        if settings.detection_backend == "yolo":
+            from app.services.face.yolo_detector import YoloFaceDetector
+
+            yolo_path = Path(settings.yolo_model_path)
+            if not yolo_path.is_absolute():
+                yolo_path = BASE_DIR / yolo_path
+            self.detector = YoloFaceDetector(str(yolo_path), conf_threshold=settings.min_det_score)
+        elif settings.detection_backend == "opencv":
             self.detector = OpenCVHaarDetector()
         else:
             self.detector = InsightFaceDetector(model_name=settings.model_name)

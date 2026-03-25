@@ -14,6 +14,7 @@ from app.api.deps import get_db, get_pipeline_registry
 from app.api.schemas.search import (
     CompareSearchItem,
     CompareSearchResponse,
+    DetectedFaceInfo,
     SearchResponse,
     SearchResult,
 )
@@ -151,6 +152,14 @@ def _response_from_outcome(
 ) -> SearchResponse:
     results = _hydrate_results(db, outcome.pipeline, outcome.faces)
     matched_faces = sum(1 for face in outcome.faces if face.best_match_above_threshold)
+    detected_faces = [
+        DetectedFaceInfo(
+            face_index=face.face_index,
+            detection_score=face.detection_score,
+            face_bbox=list(face.face_bbox) if face.face_bbox is not None else None,
+        )
+        for face in outcome.faces
+    ]
     return SearchResponse(
         k=k,
         model=outcome.model,
@@ -164,6 +173,7 @@ def _response_from_outcome(
         pipeline=outcome.pipeline,
         latency_ms=outcome.latency_ms,
         available_pipelines=available_pipelines,
+        detected_faces=detected_faces,
     )
 
 
@@ -250,6 +260,14 @@ async def search_compare(
                 decision=outcome.decision,
                 latency_ms=outcome.latency_ms,
                 error=outcome.error,
+                detected_faces=[
+                    DetectedFaceInfo(
+                        face_index=face.face_index,
+                        detection_score=face.detection_score,
+                        face_bbox=list(face.face_bbox) if face.face_bbox is not None else None,
+                    )
+                    for face in outcome.faces
+                ],
             )
         )
 

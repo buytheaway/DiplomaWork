@@ -68,12 +68,13 @@ class Settings(BaseSettings):
     # ── face detection / quality ─────────────────────────────────────────
     strict_single_face: bool = Field(True, alias="STRICT_SINGLE_FACE")
     match_threshold: float = Field(0.4, alias="MATCH_THRESHOLD")
-    detection_backend: Literal["insightface", "opencv", "none"] = Field(
+    detection_backend: Literal["insightface", "opencv", "yolo", "none"] = Field(
         "none", alias="DETECTION_BACKEND"
     )
-    custom_detection_backend: Literal["insightface", "opencv", "none"] = Field(
+    custom_detection_backend: Literal["insightface", "opencv", "yolo", "none"] = Field(
         "opencv", alias="CUSTOM_DETECTION_BACKEND"
     )
+    yolo_model_path: str = Field("", alias="YOLO_MODEL_PATH")
     allow_center_crop: bool = Field(False, alias="ALLOW_CENTER_CROP")
     custom_allow_center_crop: bool = Field(True, alias="CUSTOM_ALLOW_CENTER_CROP")
     min_det_score: float = Field(0.5, alias="MIN_DET_SCORE")

@@ -780,6 +780,8 @@ class SearchTab(QWidget):
                 thresholds[int(result.get("face_index", 0))] = threshold
 
         annotations: list[dict[str, Any]] = []
+        matched_face_indices: set[int] = set()
+
         for face_index, results in grouped.items():
             best = max(results, key=lambda item: float(item.get("score", 0.0)))
             best["face_index"] = face_index
@@ -792,6 +794,28 @@ class SearchTab(QWidget):
             else:
                 best["quality"] = "unknown"
             annotations.append(best)
+            matched_face_indices.add(face_index)
+
+        # Add annotations for detected faces that had NO matches
+        detected_faces = []
+        if "comparisons" in payload:
+            for comparison in payload.get("comparisons", []):
+                detected_faces.extend(comparison.get("detected_faces", []))
+        else:
+            detected_faces = payload.get("detected_faces", [])
+
+        for face_info in detected_faces:
+            fi = int(face_info.get("face_index", 0))
+            if fi not in matched_face_indices:
+                annotations.append({
+                    "face_index": fi,
+                    "face_bbox": face_info.get("face_bbox"),
+                    "detection_score": face_info.get("detection_score"),
+                    "label": "No match",
+                    "quality": "unknown",
+                    "score": None,
+                })
+
         return sorted(annotations, key=lambda item: int(item.get("face_index", 0)))
 
     def _clear_frame_faces(self) -> None:

@@ -5,6 +5,12 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class DetectedFaceInfo(BaseModel):
+    face_index: int = 0
+    detection_score: float | None = None
+    face_bbox: list[float] | None = None
+
+
 class SearchResult(BaseModel):
     pipeline: str | None = None
     face_index: int = 0
@@ -30,6 +36,7 @@ class SearchResponse(BaseModel):
     pipeline: str | None = None
     latency_ms: float | None = None
     available_pipelines: list[str] = Field(default_factory=list)
+    detected_faces: list[DetectedFaceInfo] = Field(default_factory=list)
 
 
 class CompareSearchItem(BaseModel):
@@ -44,6 +51,7 @@ class CompareSearchItem(BaseModel):
     decision: str = "unknown"
     latency_ms: float | None = None
     error: str | None = None
+    detected_faces: list[DetectedFaceInfo] = Field(default_factory=list)
 
 
 class CompareSearchResponse(BaseModel):
