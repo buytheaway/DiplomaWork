@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0",
+  "bundle_type": "custom_face_pipeline",
+  "generated_at_utc": "2026-03-27T11:38:35+00:00",
+  "backend": "onnx",
+  "model_name": null,
+  "embedding_dim": 512,
+  "io_contract": {
+    "input": {
+      "image_formats": [
+        "jpg",
+        "jpeg",
+        "png"
+      ],
+      "color_space": "RGB",
+      "aligned_face_size": [
+        112,
+        112
+      ]
+    },
+    "output": {
+      "type": "embedding",
+      "dtype": "float32",
+      "shape": [
+        512
+      ],
+      "normalization": "l2"
+    },
+    "errors": [
+      "no_face",
+      "multiple_faces",
+      "invalid_image",
+      "internal_error"
+    ]
+  },
+  "pipeline_contract": {
+    "multiple_faces_policy": "largest",
+    "det_score_threshold": 0.5
+  },
+  "env": {
+    "ENABLE_CUSTOM_PIPELINE": "true",
+    "CUSTOM_BACKEND": "onnx",
+    "CUSTOM_INDEX_PATH": "/app/model_bundle/hnsw",
+    "ONNX_DETECTOR_PATH": "/app/model_bundle/models/det_10g.onnx",
+    "ONNX_EMBEDDER_PATH": "/app/model_bundle/models/w600k_r50.onnx",
+    "EMBEDDING_DIM": "512"
+  },
+  "files": [
+    {
+      "path": "models/det_10g.onnx",
+      "size_bytes": 16923827,
+      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+    },
+    {
+      "path": "models/w600k_r50.onnx",
+      "size_bytes": 174383860,
+      "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+    },
+    {
+      "path": "hnsw/faiss.index",
+      "size_bytes": 21434626,
+      "sha256": "0828fbf3c8e9a505dbdbbe5d070aed9f23b5439e851a68ea709e7b6e81a8bed3"
+    },
+    {
+      "path": "hnsw/meta.json",
+      "size_bytes": 238,
+      "sha256": "bfbe5997a8eb92bbdf5c040626d29214e0a5c3a5779291630d6f3de399f09f21"
+    },
+    {
+      "path": ".env.custom",
+      "size_bytes": 288,
+      "sha256": "7d1e3258fc3a00ae4ac4d8a0c2349209d037234cccd9feb568016ba98a3e0c20"
+    },
+    {
+      "path": ".env.custom.example",
+      "size_bytes": 288,
+      "sha256": "7d1e3258fc3a00ae4ac4d8a0c2349209d037234cccd9feb568016ba98a3e0c20"
+    },
+    {
+      "path": "README_EXPORT.md",
+      "size_bytes": 1401,
+      "sha256": "896ec2bb217582d838ee685246ae5e7d4a631915e623e96a261345af2076a776"
+    },
+    {
+      "path": "CHECKLIST_PRELAUNCH.md",
+      "size_bytes": 993,
+      "sha256": "73d959513357b4945b252744ff044c5fe05d1f6ec753ce88c041e43ffda6372f"
+    },
+    {
+      "path": "validate_bundle.py",
+      "size_bytes": 12201,
+      "sha256": "8d1fa9e0f51dc3f63331621e288b3dd45494c58abf4834211f42c7d7505ab00d"
+    },
+    {
+      "path": "smoke_runtime.py",
+      "size_bytes": 14565,
+      "sha256": "59ed0bbc4f319e63b5847af4c7afe7342e793750a8ffcb675d1d4f28ad27386e"
+    },
+    {
+      "path": "requirements-ml-onnx.txt",
+      "size_bytes": 119,
+      "sha256": "91b09ef1702fb278759a4ef7c692b05febde69ac1f5e338efb5840fd9a825338"
+    },
+    {
+      "path": "smoke_inputs/single_face.jpg",
+      "size_bytes": 24890,
+      "sha256": "a6f192a0fe9f8231da7cedd86780583aca35ff0181564e84d4098d93ceff16e4"
+    },
+    {
+      "path": "smoke_inputs/no_face.png",
+      "size_bytes": 1008,
+      "sha256": "12a86e9c1ad94d2991ac2cbd20b84cce959f473407ca659c70bc99534091a185"
+    },
+    {
+      "path": "smoke_inputs/multiple_faces.jpg",
+      "size_bytes": 48720,
+      "sha256": "fcdcf99ee80b7fef3bff6d09ba27792d830aab35d2d6282674e53d6dc2b49b24"
+    },
+    {
+      "path": "smoke_inputs/README.md",
+      "size_bytes": 180,
+      "sha256": "0f49935abcdd2090303c90911ba30f3b56d913360b59ffb706ae7d6341b1bb75"
+    }
+  ]
+}
