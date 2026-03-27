@@ -1,22 +1,23 @@
 from __future__ import annotations
 
-BG_WINDOW = "#0a0f16"
-BG_PANEL = "#111821"
-BG_PANEL_2 = "#151d27"
-BG_ELEVATED = "#1a222d"
-BG_INPUT = "#0d141c"
-BG_HOVER = "#1d2733"
-BG_ACTIVE = "#202c3a"
-BORDER = "#243241"
-BORDER_STRONG = "#2b3f55"
-TEXT = "#d7e3ee"
-TEXT_SOFT = "#8ca2b6"
-TEXT_MUTED = "#6b7f91"
-ACCENT = "#22e7ff"
-ACCENT_SOFT = "#b9f5ff"
-SUCCESS = "#37f3bb"
-WARN = "#ffcc73"
-ERROR = "#ff6b88"
+BG_WINDOW = "#0c1117"
+BG_PANEL = "#11171f"
+BG_PANEL_2 = "#151d26"
+BG_ELEVATED = "#18212c"
+BG_INPUT = "#0f151d"
+BG_HOVER = "#1b2632"
+BG_ACTIVE = "#213142"
+BORDER = "#25313d"
+BORDER_SOFT = "#1c2732"
+BORDER_STRONG = "#314252"
+TEXT = "#d7e1ea"
+TEXT_SOFT = "#94a5b5"
+TEXT_MUTED = "#6e8092"
+ACCENT = "#4ccde8"
+ACCENT_SOFT = "#b4eef8"
+SUCCESS = "#53d8b2"
+WARN = "#e6c06b"
+ERROR = "#ef7d95"
 
 
 def app_stylesheet() -> str:
@@ -24,7 +25,7 @@ def app_stylesheet() -> str:
     QWidget {{
         background-color: {BG_WINDOW};
         color: {TEXT};
-        font-family: "Bahnschrift SemiCondensed", "Segoe UI";
+        font-family: "Segoe UI", "Bahnschrift";
         font-size: 13px;
     }}
 
@@ -34,120 +35,124 @@ def app_stylesheet() -> str:
 
     QFrame#sidebar {{
         background-color: {BG_PANEL};
-        border-right: 1px solid {BORDER};
+        border-right: 1px solid {BORDER_SOFT};
     }}
 
     QFrame#topbar {{
-        background-color: rgba(9, 14, 20, 0.92);
-        border-bottom: 1px solid {BORDER};
+        background-color: {BG_WINDOW};
+        border-bottom: 1px solid {BORDER_SOFT};
     }}
 
-    QFrame#card[variant="default"], QFrame#card[variant="metric"] {{
+    QFrame#card[variant="default"],
+    QFrame#card[variant="metric"],
+    QFrame#card[variant="subtle"] {{
         background-color: {BG_PANEL_2};
-        border: 1px solid {BORDER};
-        border-radius: 4px;
+        border: 1px solid {BORDER_SOFT};
+        border-radius: 8px;
     }}
 
     QFrame#card[variant="metric"] {{
-        border-top: 1px solid {ACCENT};
+        background-color: {BG_PANEL};
+    }}
+
+    QFrame#card[variant="subtle"] {{
+        background-color: rgba(255, 255, 255, 0.02);
     }}
 
     QLabel#sectionHeading {{
-        color: {ACCENT_SOFT};
-        font-size: 15px;
-        font-weight: 700;
-        letter-spacing: 1px;
+        color: {TEXT};
+        font-size: 16px;
+        font-weight: 600;
         background: transparent;
     }}
 
     QLabel#dimLabel {{
         color: {TEXT_SOFT};
-        font-size: 11px;
-        letter-spacing: 1px;
+        font-size: 12px;
+        line-height: 150%;
         background: transparent;
     }}
 
     QLabel#microLabel {{
         color: {TEXT_MUTED};
-        font-size: 10px;
-        letter-spacing: 1px;
+        font-size: 11px;
         background: transparent;
     }}
 
     QLabel#infoValue {{
         color: {TEXT};
         font-size: 16px;
-        font-weight: 700;
+        font-weight: 600;
         background: transparent;
     }}
 
     QLabel#metricTitle {{
         color: {TEXT_MUTED};
-        font-size: 10px;
-        letter-spacing: 1px;
+        font-size: 11px;
         background: transparent;
     }}
 
     QLabel#metricValue {{
+        color: {TEXT};
+        font-size: 24px;
+        font-weight: 700;
+        background: transparent;
+    }}
+
+    QLabel#metricDetail {{
+        color: {TEXT_SOFT};
+        font-size: 11px;
+        background: transparent;
+    }}
+
+    QLabel#brandTitle {{
         color: {TEXT};
         font-size: 22px;
         font-weight: 700;
         background: transparent;
     }}
 
-    QLabel#metricDetail {{
-        color: {ACCENT};
-        font-size: 11px;
-        background: transparent;
-    }}
-
-    QLabel#brandTitle {{
-        color: {ACCENT_SOFT};
-        font-size: 24px;
-        font-weight: 800;
-        letter-spacing: 1px;
-        background: transparent;
-    }}
-
-    QLabel#brandSubtitle, QLabel#operatorName, QLabel#operatorMeta, QLabel#topbarTitle {{
+    QLabel#brandSubtitle,
+    QLabel#operatorName,
+    QLabel#operatorMeta,
+    QLabel#topbarTitle {{
         background: transparent;
     }}
 
     QLabel#brandSubtitle {{
         color: {TEXT_MUTED};
         font-size: 11px;
-        letter-spacing: 1px;
     }}
 
     QLabel#operatorName {{
-        color: {TEXT};
-        font-size: 14px;
-        font-weight: 700;
+        color: {TEXT_SOFT};
+        font-size: 12px;
+        font-weight: 600;
     }}
 
     QLabel#operatorMeta {{
-        color: {TEXT_SOFT};
+        color: {TEXT_MUTED};
         font-size: 11px;
-        letter-spacing: 1px;
     }}
 
     QLabel#topbarTitle {{
         color: {TEXT};
-        font-size: 14px;
-        font-weight: 700;
+        font-size: 18px;
+        font-weight: 600;
     }}
 
     QLineEdit, QTextEdit, QComboBox, QSpinBox, QTableWidget {{
         background-color: {BG_INPUT};
         border: 1px solid {BORDER};
-        border-radius: 2px;
+        border-radius: 6px;
         color: {TEXT};
         selection-background-color: {ACCENT};
         selection-color: #061018;
     }}
 
     QLineEdit, QComboBox, QSpinBox {{
-        padding: 8px 10px;
+        padding: 7px 10px;
+        min-height: 18px;
     }}
 
     QTextEdit {{
@@ -167,118 +172,130 @@ def app_stylesheet() -> str:
         background-color: {BG_PANEL_2};
         border: 1px solid {BORDER};
         color: {TEXT};
-        selection-background-color: {ACCENT};
-        selection-color: #061018;
+        selection-background-color: {BG_ACTIVE};
+        selection-color: {TEXT};
     }}
 
     QPushButton#navButton {{
         background-color: transparent;
         border: none;
-        border-left: 3px solid transparent;
+        border-left: 2px solid transparent;
         color: {TEXT_SOFT};
         font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 1px;
-        padding: 12px 18px;
+        font-weight: 600;
+        padding: 10px 12px;
         text-align: left;
     }}
 
     QPushButton#navButton:hover {{
-        background-color: rgba(34, 231, 255, 0.06);
+        background-color: rgba(76, 205, 232, 0.06);
         color: {TEXT};
     }}
 
     QPushButton#navButton:checked {{
-        background-color: rgba(255, 255, 255, 0.06);
+        background-color: rgba(76, 205, 232, 0.08);
         border-left-color: {ACCENT};
-        color: {ACCENT};
+        color: {TEXT};
     }}
 
-    QPushButton#primaryButton, QPushButton#secondaryButton, QPushButton#toolbarButton {{
+    QPushButton#primaryButton,
+    QPushButton#secondaryButton,
+    QPushButton#toolbarButton,
+    QPushButton#collapseButton {{
         min-height: 34px;
-        padding: 9px 16px;
-        border-radius: 2px;
-        font-weight: 700;
-        letter-spacing: 1px;
+        padding: 8px 14px;
+        border-radius: 6px;
+        font-weight: 600;
     }}
 
     QPushButton#primaryButton {{
         background-color: {ACCENT};
-        color: #041017;
+        color: #071218;
         border: 1px solid {ACCENT};
     }}
 
     QPushButton#primaryButton:hover {{
-        background-color: {ACCENT_SOFT};
-        border-color: {ACCENT_SOFT};
+        background-color: #67d8ee;
+        border-color: #67d8ee;
     }}
 
-    QPushButton#secondaryButton, QPushButton#toolbarButton {{
+    QPushButton#secondaryButton,
+    QPushButton#toolbarButton,
+    QPushButton#collapseButton {{
         background-color: transparent;
         color: {TEXT};
-        border: 1px solid {BORDER_STRONG};
+        border: 1px solid {BORDER};
     }}
 
-    QPushButton#secondaryButton:hover, QPushButton#toolbarButton:hover {{
+    QPushButton#secondaryButton:hover,
+    QPushButton#toolbarButton:hover,
+    QPushButton#collapseButton:hover {{
         background-color: {BG_HOVER};
-        border-color: {ACCENT};
-        color: {ACCENT_SOFT};
+        border-color: {BORDER_STRONG};
     }}
 
     QPushButton#toolbarButton:checked {{
-        background-color: rgba(34, 231, 255, 0.12);
+        background-color: rgba(76, 205, 232, 0.08);
         border-color: {ACCENT};
-        color: {ACCENT_SOFT};
+        color: {TEXT};
+    }}
+
+    QPushButton#collapseButton {{
+        text-align: left;
+        padding-left: 10px;
+        color: {TEXT_SOFT};
     }}
 
     QPushButton:disabled {{
         color: {TEXT_MUTED};
-        border-color: {BORDER};
+        border-color: {BORDER_SOFT};
         background-color: rgba(255, 255, 255, 0.02);
     }}
 
-    QLabel[state="ok"], QLabel[state="warn"], QLabel[state="error"], QLabel[state="idle"] {{
-        padding: 6px 12px;
-        border-radius: 11px;
+    QLabel[state="ok"],
+    QLabel[state="warn"],
+    QLabel[state="error"],
+    QLabel[state="idle"] {{
+        padding: 5px 10px;
+        border-radius: 10px;
         font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 1px;
+        font-weight: 600;
         border: 1px solid {BORDER};
     }}
 
     QLabel[state="ok"] {{
         color: {SUCCESS};
-        background-color: rgba(55, 243, 187, 0.08);
-        border-color: rgba(55, 243, 187, 0.3);
+        background-color: rgba(83, 216, 178, 0.08);
+        border-color: rgba(83, 216, 178, 0.24);
     }}
 
     QLabel[state="warn"] {{
         color: {WARN};
-        background-color: rgba(255, 204, 115, 0.08);
-        border-color: rgba(255, 204, 115, 0.3);
+        background-color: rgba(230, 192, 107, 0.08);
+        border-color: rgba(230, 192, 107, 0.24);
     }}
 
     QLabel[state="error"] {{
         color: {ERROR};
-        background-color: rgba(255, 107, 136, 0.08);
-        border-color: rgba(255, 107, 136, 0.3);
+        background-color: rgba(239, 125, 149, 0.08);
+        border-color: rgba(239, 125, 149, 0.24);
     }}
 
     QLabel[state="idle"] {{
         color: {TEXT_SOFT};
-        background-color: rgba(140, 162, 182, 0.08);
+        background-color: rgba(148, 165, 181, 0.08);
     }}
 
     QFrame#imageDropZone {{
-        background-color: #0c1219;
-        border: 1px solid {BORDER_STRONG};
-        border-radius: 4px;
+        background-color: {BG_INPUT};
+        border: 1px dashed {BORDER_STRONG};
+        border-radius: 10px;
     }}
 
     QLabel#dropZoneTitle {{
         color: {TEXT};
-        font-size: 24px;
-        font-weight: 700;
+        font-size: 18px;
+        font-weight: 600;
         background: transparent;
     }}
 
@@ -292,16 +309,16 @@ def app_stylesheet() -> str:
     QLabel#dropZoneImage {{
         color: {TEXT_MUTED};
         font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 1px;
+        font-weight: 600;
         background: transparent;
-        border: 1px dashed {BORDER_STRONG};
+        border: 1px solid {BORDER};
+        border-radius: 8px;
     }}
 
     QFrame#resultCard {{
         background-color: {BG_ELEVATED};
-        border: 1px solid {BORDER};
-        border-radius: 2px;
+        border: 1px solid {BORDER_SOFT};
+        border-radius: 8px;
     }}
 
     QLabel#resultThumb {{
@@ -309,17 +326,19 @@ def app_stylesheet() -> str:
         border: 1px solid {BORDER};
         color: {TEXT_MUTED};
         font-size: 11px;
-        letter-spacing: 1px;
     }}
 
     QLabel#resultTitle {{
         color: {TEXT};
         font-size: 14px;
-        font-weight: 700;
+        font-weight: 600;
         background: transparent;
     }}
 
-    QLabel#resultSubtitle, QLabel#resultMeta, QLabel#resultPipeline, QLabel#resultDistance {{
+    QLabel#resultSubtitle,
+    QLabel#resultMeta,
+    QLabel#resultPipeline,
+    QLabel#resultDistance {{
         color: {TEXT_SOFT};
         font-size: 11px;
         background: transparent;
@@ -327,7 +346,7 @@ def app_stylesheet() -> str:
 
     QLabel#resultScore {{
         color: {ACCENT_SOFT};
-        font-size: 24px;
+        font-size: 22px;
         font-weight: 700;
         background: transparent;
     }}
@@ -337,97 +356,78 @@ def app_stylesheet() -> str:
         border: 1px solid {BORDER};
         color: {TEXT_MUTED};
         font-size: 11px;
-        letter-spacing: 1px;
     }}
 
-    QFrame#liveFaceLine {{
-        background-color: {BG_ELEVATED};
-        border: 1px solid {BORDER};
-        border-radius: 2px;
-    }}
-
-    QLabel#liveFaceTitle {{
-        color: {TEXT};
-        font-size: 13px;
-        font-weight: 700;
-        background: transparent;
-    }}
-
-    QLabel#liveFaceMeta {{
-        color: {TEXT_SOFT};
-        font-size: 11px;
-        background: transparent;
-    }}
-
-    QLabel#liveFaceStatus {{
-        min-width: 78px;
-        padding: 6px 10px;
-        border-radius: 10px;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 1px;
-        border: 1px solid {BORDER};
-    }}
-
-    QLabel#liveFaceStatus[state="ok"] {{
-        color: {SUCCESS};
-        background-color: rgba(55, 243, 187, 0.08);
-        border-color: rgba(55, 243, 187, 0.3);
-    }}
-
-    QLabel#liveFaceStatus[state="warn"] {{
-        color: {WARN};
-        background-color: rgba(255, 204, 115, 0.08);
-        border-color: rgba(255, 204, 115, 0.3);
-    }}
-
-    QLabel#liveFaceStatus[state="error"] {{
-        color: {ERROR};
-        background-color: rgba(255, 107, 136, 0.08);
-        border-color: rgba(255, 107, 136, 0.3);
-    }}
-
+    QFrame#liveFaceLine,
     QFrame#personCard {{
         background-color: {BG_ELEVATED};
-        border: 1px solid {BORDER};
-        border-radius: 3px;
+        border: 1px solid {BORDER_SOFT};
+        border-radius: 8px;
     }}
 
+    QLabel#liveFaceTitle,
     QLabel#personCardTitle {{
-        color: {ACCENT_SOFT};
-        font-size: 15px;
-        font-weight: 700;
+        color: {TEXT};
+        font-size: 13px;
+        font-weight: 600;
         background: transparent;
     }}
 
+    QLabel#liveFaceMeta,
     QLabel#personCardMeta {{
         color: {TEXT_SOFT};
         font-size: 11px;
         background: transparent;
     }}
 
+    QLabel#liveFaceStatus {{
+        min-width: 74px;
+        padding: 5px 10px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        border: 1px solid {BORDER};
+    }}
+
+    QLabel#liveFaceStatus[state="ok"] {{
+        color: {SUCCESS};
+        background-color: rgba(83, 216, 178, 0.08);
+        border-color: rgba(83, 216, 178, 0.24);
+    }}
+
+    QLabel#liveFaceStatus[state="warn"] {{
+        color: {WARN};
+        background-color: rgba(230, 192, 107, 0.08);
+        border-color: rgba(230, 192, 107, 0.24);
+    }}
+
+    QLabel#liveFaceStatus[state="error"] {{
+        color: {ERROR};
+        background-color: rgba(239, 125, 149, 0.08);
+        border-color: rgba(239, 125, 149, 0.24);
+    }}
+
     QTextEdit#consoleView {{
-        background-color: #0b1117;
-        color: #c7f7ff;
+        background-color: {BG_INPUT};
+        color: #c9d7e4;
         border: 1px solid {BORDER};
         font-family: "Consolas", "Courier New";
         font-size: 12px;
     }}
 
     QTableWidget {{
-        alternate-background-color: {BG_ELEVATED};
-        gridline-color: {BORDER};
+        alternate-background-color: rgba(255, 255, 255, 0.02);
+        gridline-color: {BORDER_SOFT};
     }}
 
     QHeaderView::section {{
         background-color: {BG_PANEL};
         border: none;
-        border-bottom: 1px solid {BORDER};
+        border-bottom: 1px solid {BORDER_SOFT};
         padding: 8px 10px;
         color: {TEXT_SOFT};
         font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 1px;
+        font-weight: 600;
     }}
 
     QScrollBar:vertical {{
@@ -446,8 +446,10 @@ def app_stylesheet() -> str:
         background: {ACCENT};
     }}
 
-    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
-    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+    QScrollBar::add-line:vertical,
+    QScrollBar::sub-line:vertical,
+    QScrollBar::add-page:vertical,
+    QScrollBar::sub-page:vertical {{
         background: transparent;
         height: 0;
     }}

@@ -7,9 +7,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QComboBox,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
-    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -20,7 +18,7 @@ from app.core.api_client import ApiClient
 from app.core.worker import ApiWorker
 from app.ui.activity import export_events_csv, recent_events, record_event
 from app.ui.dialogs import show_error, show_warning
-from app.ui.widgets import Card, ConsoleView, DimLabel, MetricCard, SectionHeading, StatusPill
+from app.ui.widgets import ActionButton, Card, CollapsibleSection, ConsoleView, DimLabel, MetricCard, SectionHeading
 
 
 class StatsTab(QWidget):
@@ -37,29 +35,19 @@ class StatsTab(QWidget):
         root.setContentsMargins(24, 24, 24, 24)
         root.setSpacing(18)
 
-        header = QHBoxLayout()
-        title_col = QVBoxLayout()
-        title_col.addWidget(SectionHeading("Logs & Stats"))
-        title_col.addWidget(DimLabel("Backend status, activity, and index rebuild tools"))
-        header.addLayout(title_col)
-        header.addStretch()
-        self.health_pill = StatusPill("CHECKING", state="idle")
-        header.addWidget(self.health_pill)
+        header = QVBoxLayout()
+        header.addWidget(SectionHeading("Logs"))
+        header.addWidget(DimLabel("Operational events, backend summary, and index maintenance tools."))
         root.addLayout(header)
 
         metrics = QHBoxLayout()
         metrics.setSpacing(14)
         self.metric_backend = MetricCard("Backend", "-")
         self.metric_default = MetricCard("Default pipeline", "-")
-        self.metric_pretrained = MetricCard("Pretrained vectors", "-")
-        self.metric_custom = MetricCard("Custom vectors", "-")
-        for metric in [
-            self.metric_backend,
-            self.metric_default,
-            self.metric_pretrained,
-            self.metric_custom,
-        ]:
-            metrics.addWidget(metric, 1)
+        self.metric_vectors = MetricCard("Indexed vectors", "-")
+        metrics.addWidget(self.metric_backend, 1)
+        metrics.addWidget(self.metric_default, 1)
+        metrics.addWidget(self.metric_vectors, 1)
         root.addLayout(metrics)
 
         main_row = QHBoxLayout()
@@ -70,14 +58,13 @@ class StatsTab(QWidget):
         left_header = QHBoxLayout()
         left_header.addWidget(SectionHeading("Activity log"))
         left_header.addStretch()
-        self.export_btn = QPushButton("EXPORT CSV")
-        self.export_btn.setObjectName("secondaryButton")
+        self.export_btn = ActionButton("Export CSV")
         self.export_btn.clicked.connect(self._export_events)
         left_header.addWidget(self.export_btn)
         left.addLayout(left_header)
 
         self.events_table = QTableWidget(0, 4)
-        self.events_table.setHorizontalHeaderLabels(["TIMESTAMP", "SEVERITY", "CATEGORY", "MESSAGE"])
+        self.events_table.setHorizontalHeaderLabels(["Timestamp", "Severity", "Category", "Message"])
         self.events_table.verticalHeader().setVisible(False)
         self.events_table.setAlternatingRowColors(True)
         self.events_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -89,46 +76,46 @@ class StatsTab(QWidget):
 
         controls_card = Card()
         controls = controls_card.body()
-        controls.addWidget(SectionHeading("Index"))
+        controls.addWidget(SectionHeading("Index controls"))
 
         pipeline_row = QHBoxLayout()
         self.pipeline_combo = QComboBox()
-        self.pipeline_combo.addItem("PRETRAINED", "pretrained")
-        self.pipeline_combo.addItem("CUSTOM", "custom")
-        self.refresh_btn = QPushButton("REFRESH")
-        self.refresh_btn.setObjectName("primaryButton")
+        self.pipeline_combo.addItem("Pretrained", "pretrained")
+        self.pipeline_combo.addItem("Custom", "custom")
+        self.refresh_btn = ActionButton("Refresh", primary=True)
         self.refresh_btn.clicked.connect(self._refresh)
         pipeline_row.addWidget(self.pipeline_combo)
         pipeline_row.addWidget(self.refresh_btn)
         controls.addLayout(pipeline_row)
 
+        params_row = QHBoxLayout()
+        params_row.setSpacing(10)
         self.m_input = QLineEdit("32")
         self.efc_input = QLineEdit("200")
         self.efs_input = QLineEdit("64")
         self.m_input.setPlaceholderText("HNSW M")
-        self.efc_input.setPlaceholderText("HNSW efConstruction")
-        self.efs_input.setPlaceholderText("HNSW efSearch")
-        controls.addWidget(self.m_input)
-        controls.addWidget(self.efc_input)
-        controls.addWidget(self.efs_input)
+        self.efc_input.setPlaceholderText("efConstruction")
+        self.efs_input.setPlaceholderText("efSearch")
+        params_row.addWidget(self.m_input)
+        params_row.addWidget(self.efc_input)
+        params_row.addWidget(self.efs_input)
+        controls.addLayout(params_row)
 
-        rebuild_btn = QPushButton("REBUILD HNSW")
-        rebuild_btn.setObjectName("secondaryButton")
-        rebuild_btn.clicked.connect(self._rebuild)
-        self.rebuild_btn = rebuild_btn
-        controls.addWidget(rebuild_btn)
+        self.rebuild_btn = ActionButton("Rebuild HNSW")
+        self.rebuild_btn.clicked.connect(self._rebuild)
+        controls.addWidget(self.rebuild_btn)
 
         self.latency_label = DimLabel("")
         controls.addWidget(self.latency_label)
         right_col.addWidget(controls_card)
 
-        console_card = Card()
-        cc = console_card.body()
-        cc.addWidget(SectionHeading("Response data"))
+        details_card = CollapsibleSection("Technical details", expanded=False)
+        details = details_card.body()
+        details.addWidget(DimLabel("Raw snapshot and rebuild payloads stay here as a secondary technical view."))
         self.stats_view = ConsoleView("Backend health and index payloads will appear here.")
-        self.stats_view.setMinimumHeight(320)
-        cc.addWidget(self.stats_view)
-        right_col.addWidget(console_card, 1)
+        self.stats_view.setMinimumHeight(240)
+        details.addWidget(self.stats_view)
+        right_col.addWidget(details_card)
 
         main_row.addLayout(right_col, 2)
         root.addLayout(main_row, 1)
@@ -164,18 +151,11 @@ class StatsTab(QWidget):
         health = payload.get("health", {})
         stats = payload.get("stats", {})
 
-        available = health.get("available_pipelines", [])
-        self.health_pill.set_state("ok", f"ONLINE / {' + '.join(str(v).upper() for v in available)}")
+        available = [str(v) for v in health.get("available_pipelines", [])]
+        total_vectors = sum(int(stats.get(name, {}).get("embeddings_count", 0)) for name in available)
         self.metric_backend.set_value(health.get("embedding_backend", "-"), health.get("model_name", "-"))
-        self.metric_default.set_value(str(health.get("default_pipeline", "-")).upper(), "Switchable runtime")
-        self.metric_pretrained.set_value(
-            str(stats.get("pretrained", {}).get("embeddings_count", 0)),
-            f"loaded={stats.get('pretrained', {}).get('loaded', False)}",
-        )
-        self.metric_custom.set_value(
-            str(stats.get("custom", {}).get("embeddings_count", 0)),
-            f"loaded={stats.get('custom', {}).get('loaded', False)}",
-        )
+        self.metric_default.set_value(str(health.get("default_pipeline", "-")).title(), ", ".join(available))
+        self.metric_vectors.set_value(str(total_vectors), "Across loaded pipelines")
 
         self._render_events()
         self.stats_view.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
@@ -187,7 +167,7 @@ class StatsTab(QWidget):
         for row, event in enumerate(events):
             self.events_table.setItem(row, 0, QTableWidgetItem(event.timestamp.strftime("%Y-%m-%d %H:%M:%S")))
             self.events_table.setItem(row, 1, QTableWidgetItem(event.severity))
-            self.events_table.setItem(row, 2, QTableWidgetItem(event.category.upper()))
+            self.events_table.setItem(row, 2, QTableWidgetItem(event.category))
             self.events_table.setItem(row, 3, QTableWidgetItem(event.message))
         self.events_table.resizeColumnsToContents()
 
@@ -221,7 +201,6 @@ class StatsTab(QWidget):
     def _on_error(self, error: str) -> None:
         self.refresh_btn.setEnabled(True)
         self.rebuild_btn.setEnabled(True)
-        self.health_pill.set_state("error", "REQUEST FAILED")
         record_event("logs", "System request failed", severity="ERROR", details=error)
         show_error(self, "System request failed", error)
 
@@ -260,6 +239,6 @@ class StatsTab(QWidget):
         for row, event in enumerate(filtered):
             self.events_table.setItem(row, 0, QTableWidgetItem(event.timestamp.strftime("%Y-%m-%d %H:%M:%S")))
             self.events_table.setItem(row, 1, QTableWidgetItem(event.severity))
-            self.events_table.setItem(row, 2, QTableWidgetItem(event.category.upper()))
+            self.events_table.setItem(row, 2, QTableWidgetItem(event.category))
             self.events_table.setItem(row, 3, QTableWidgetItem(event.message))
         self.events_table.resizeColumnsToContents()

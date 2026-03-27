@@ -29,9 +29,51 @@ class Card(QFrame):
         return self._layout
 
 
+class CollapsibleSection(QFrame):
+    def __init__(self, title: str, parent=None, *, expanded: bool = False) -> None:
+        super().__init__(parent)
+        self.setObjectName("card")
+        self.setProperty("variant", "subtle")
+
+        self._title = title
+        self._expanded = expanded
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
+
+        self._toggle = QPushButton()
+        self._toggle.setObjectName("collapseButton")
+        self._toggle.setCheckable(True)
+        self._toggle.setChecked(expanded)
+        self._toggle.clicked.connect(self.set_expanded)
+        layout.addWidget(self._toggle)
+
+        self._content = QWidget()
+        self._content_layout = QVBoxLayout(self._content)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(10)
+        layout.addWidget(self._content)
+
+        self.set_expanded(expanded)
+
+    def body(self) -> QVBoxLayout:
+        return self._content_layout
+
+    def set_expanded(self, expanded: bool) -> None:
+        self._expanded = expanded
+        self._toggle.setChecked(expanded)
+        arrow = "▾" if expanded else "▸"
+        self._toggle.setText(f"{arrow}  {self._title}")
+        self._content.setVisible(expanded)
+
+    def is_expanded(self) -> bool:
+        return self._expanded
+
+
 class SectionHeading(QLabel):
     def __init__(self, text: str, parent=None) -> None:
-        super().__init__(text.upper(), parent)
+        super().__init__(text, parent)
         self.setObjectName("sectionHeading")
 
 
@@ -49,7 +91,7 @@ class InfoRow(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        self._label = QLabel(label.upper())
+        self._label = QLabel(label)
         self._label.setObjectName("microLabel")
         self._value = QLabel(value)
         self._value.setObjectName("infoValue")
@@ -67,7 +109,7 @@ class MetricCard(Card):
         super().__init__(parent, variant="metric")
         body = self.body()
 
-        self.title_label = QLabel(title.upper())
+        self.title_label = QLabel(title)
         self.title_label.setObjectName("metricTitle")
         self.value_label = QLabel(value)
         self.value_label.setObjectName("metricValue")
@@ -87,7 +129,7 @@ class MetricCard(Card):
 
 
 class StatusPill(QLabel):
-    def __init__(self, text: str = "OFFLINE", *, state: str = "idle", parent=None) -> None:
+    def __init__(self, text: str = "Offline", *, state: str = "idle", parent=None) -> None:
         super().__init__(text, parent)
         self.setAlignment(Qt.AlignCenter)
         self.set_state(state, text)
@@ -102,7 +144,7 @@ class StatusPill(QLabel):
 
 class NavButton(QPushButton):
     def __init__(self, text: str, parent=None) -> None:
-        super().__init__(text.upper(), parent)
+        super().__init__(text, parent)
         self.setObjectName("navButton")
         self.setCheckable(True)
         self.setCursor(Qt.PointingHandCursor)
@@ -110,7 +152,7 @@ class NavButton(QPushButton):
 
 class ActionButton(QPushButton):
     def __init__(self, text: str, parent=None, *, primary: bool = False) -> None:
-        super().__init__(text.upper(), parent)
+        super().__init__(text, parent)
         self.setObjectName("primaryButton" if primary else "secondaryButton")
         self.setCursor(Qt.PointingHandCursor)
 
@@ -126,7 +168,7 @@ class ConsoleView(QTextEdit):
 class ImageDropZone(QFrame):
     fileDropped = Signal(str)
 
-    def __init__(self, title: str = "DRAG AND DROP IMAGE", parent=None) -> None:
+    def __init__(self, title: str = "Choose an image", parent=None) -> None:
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.setObjectName("imageDropZone")
@@ -142,13 +184,13 @@ class ImageDropZone(QFrame):
         self.title_label.setAlignment(Qt.AlignCenter)
 
         self.subtitle_label = QLabel(
-            "System accepts JPG, PNG, BMP and WEBP files.\n"
-            "Drag a face image here or select it from local storage."
+            "Drag a JPG, PNG, BMP or WEBP image here,\n"
+            "or open it from local storage."
         )
         self.subtitle_label.setObjectName("dropZoneSubtitle")
         self.subtitle_label.setAlignment(Qt.AlignCenter)
 
-        self.image_label = QLabel("NO IMAGE SELECTED")
+        self.image_label = QLabel("No image selected")
         self.image_label.setObjectName("dropZoneImage")
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setMinimumHeight(260)
@@ -179,7 +221,7 @@ class ImageDropZone(QFrame):
         pixmap = QPixmap(path)
         if pixmap.isNull():
             self.clear_preview()
-            self.image_label.setText("INVALID IMAGE")
+            self.image_label.setText("Invalid image")
             return
         self.set_pixmap(pixmap)
 
@@ -191,7 +233,7 @@ class ImageDropZone(QFrame):
     def clear_preview(self) -> None:
         self._pixmap = None
         self.image_label.clear()
-        self.image_label.setText("NO IMAGE SELECTED")
+        self.image_label.setText("No image selected")
 
 
 class ResultCard(QFrame):
@@ -202,7 +244,7 @@ class ResultCard(QFrame):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
 
-        self.thumb = QLabel("FACE")
+        self.thumb = QLabel("Face")
         self.thumb.setObjectName("resultThumb")
         self.thumb.setAlignment(Qt.AlignCenter)
         self.thumb.setFixedSize(68, 68)
@@ -211,7 +253,7 @@ class ResultCard(QFrame):
         text_col.setContentsMargins(0, 0, 0, 0)
         text_col.setSpacing(3)
 
-        self.title = QLabel("NO MATCH")
+        self.title = QLabel("No match")
         self.title.setObjectName("resultTitle")
         self.subtitle = QLabel("-")
         self.subtitle.setObjectName("resultSubtitle")
@@ -245,7 +287,7 @@ class ResultCard(QFrame):
         layout.addLayout(right_col)
 
     def set_result(self, result: dict, *, rank: int = 1) -> None:
-        label = result.get("label") or "UNKNOWN_SUBJECT"
+        label = result.get("label") or "Unknown subject"
         score = result.get("score")
         distance = result.get("distance")
         pipeline = result.get("pipeline", "n/a")
@@ -253,15 +295,15 @@ class ResultCard(QFrame):
         det_score = result.get("detection_score")
         face_index = int(result.get("face_index", 0)) + 1
 
-        self.title.setText(label.upper())
-        self.subtitle.setText(f"PERSON ID  {person_id[:18]}")
-        meta_parts = [f"FACE {face_index}", f"RANK {rank}"]
+        self.title.setText(label)
+        self.subtitle.setText(f"Person ID: {person_id[:18]}")
+        meta_parts = [f"Face {face_index}", f"Rank {rank}"]
         if det_score is not None:
-            meta_parts.append(f"DET {det_score:.3f}")
+            meta_parts.append(f"Det {det_score:.3f}")
         self.meta.setText("  |  ".join(meta_parts))
-        self.pipeline.setText(f"PIPELINE  {pipeline.upper()}")
+        self.pipeline.setText(f"Pipeline: {pipeline}")
         self.score.setText(f"{(score or 0.0) * 100:.1f}%")
-        self.distance.setText(f"DIST  {distance:.4f}" if distance is not None else "DIST  --")
+        self.distance.setText(f"Distance {distance:.4f}" if distance is not None else "Distance --")
 
 
 class LiveFaceLine(QFrame):
@@ -276,7 +318,7 @@ class LiveFaceLine(QFrame):
         text_col.setContentsMargins(0, 0, 0, 0)
         text_col.setSpacing(2)
 
-        self.title = QLabel("FACE 1")
+        self.title = QLabel("Face 1")
         self.title.setObjectName("liveFaceTitle")
         self.meta = QLabel("-")
         self.meta.setObjectName("liveFaceMeta")
@@ -286,7 +328,7 @@ class LiveFaceLine(QFrame):
 
         layout.addLayout(text_col, 1)
 
-        self.status = QLabel("UNKNOWN")
+        self.status = QLabel("Unknown")
         self.status.setObjectName("liveFaceStatus")
         self.status.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status)
@@ -294,25 +336,27 @@ class LiveFaceLine(QFrame):
     def set_face(self, face: dict) -> None:
         face_index = int(face.get("face_index", 0)) + 1
         label = face.get("label") or "Unknown"
-        pipeline = str(face.get("pipeline", "-")).upper()
+        pipeline = str(face.get("pipeline", "-"))
         score = face.get("score")
         det_score = face.get("detection_score")
         quality = str(face.get("quality", "unknown")).lower()
 
-        self.title.setText(f"FACE {face_index}  {label.upper()}")
-        parts = [f"PIPELINE {pipeline}"]
+        self.title.setText(f"Face {face_index} · {label}")
+        parts = []
+        if pipeline and pipeline != "-":
+            parts.append(f"Pipeline: {pipeline}")
         if score is not None:
-            parts.append(f"SCORE {float(score):.4f}")
+            parts.append(f"Score: {float(score):.4f}")
         if det_score is not None:
-            parts.append(f"DET {float(det_score):.3f}")
-        self.meta.setText("  |  ".join(parts))
+            parts.append(f"Det: {float(det_score):.3f}")
+        self.meta.setText("  |  ".join(parts) if parts else "No technical data")
 
         status_map = {
-            "match": ("MATCH", "ok"),
-            "weak": ("WEAK", "warn"),
-            "unknown": ("UNKNOWN", "error"),
+            "match": ("Match", "ok"),
+            "weak": ("Weak", "warn"),
+            "unknown": ("Unknown", "error"),
         }
-        text, state = status_map.get(quality, ("UNKNOWN", "error"))
+        text, state = status_map.get(quality, ("Unknown", "error"))
         self.status.setText(text)
         self.status.setProperty("state", state)
         self.status.style().unpolish(self.status)
@@ -333,11 +377,11 @@ class PersonCard(QFrame):
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(8)
 
-        heading = QLabel((person.get("label") or "UNNAMED_SUBJECT").upper())
+        heading = QLabel(person.get("label") or "Unnamed subject")
         heading.setObjectName("personCardTitle")
         meta = QLabel(f"ID: {self.person_id[:16]}")
         meta.setObjectName("personCardMeta")
-        created = QLabel(f"CREATED  {str(person.get('created_at', ''))[:19].replace('T', ' ')}")
+        created = QLabel(f"Created: {str(person.get('created_at', ''))[:19].replace('T', ' ')}")
         created.setObjectName("personCardMeta")
 
         button_row = QHBoxLayout()
@@ -364,20 +408,20 @@ class ImagePreview(QLabel):
         self.setFixedSize(size, size)
         self.setAlignment(Qt.AlignCenter)
         self.setObjectName("compactPreview")
-        self.setText("NO IMAGE")
+        self.setText("No image")
 
     def load(self, path: str) -> None:
         pixmap = QPixmap(path)
         if pixmap.isNull():
             self.clear_preview()
-            self.setText("INVALID")
+            self.setText("Invalid")
             return
         scaled = pixmap.scaled(self._size, self._size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.setPixmap(scaled)
 
     def clear_preview(self) -> None:
         self.clear()
-        self.setText("NO IMAGE")
+        self.setText("No image")
 
 
 def shorten_path(path: str, *, max_length: int = 60) -> str:

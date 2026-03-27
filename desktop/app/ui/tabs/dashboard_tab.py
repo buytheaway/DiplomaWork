@@ -3,20 +3,13 @@ from __future__ import annotations
 from functools import partial
 from typing import Callable
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QGridLayout,
-    QHBoxLayout,
-    QLabel,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from app.core.api_client import ApiClient
 from app.core.worker import ApiWorker
 from app.ui.activity import recent_events
 from app.ui.dialogs import show_error
-from app.ui.widgets import ActionButton, Card, DimLabel, MetricCard, SectionHeading, StatusPill
+from app.ui.widgets import ActionButton, Card, DimLabel, MetricCard, SectionHeading
 
 
 class DashboardTab(QWidget):
@@ -33,88 +26,71 @@ class DashboardTab(QWidget):
         root.setContentsMargins(24, 24, 24, 24)
         root.setSpacing(18)
 
-        header_row = QHBoxLayout()
-        title_col = QVBoxLayout()
-        title_col.setSpacing(4)
-
+        header = QVBoxLayout()
+        header.setSpacing(4)
         title = QLabel("Dashboard")
         title.setObjectName("brandTitle")
-        title.setStyleSheet("font-size: 34px;")
-        subtitle = DimLabel("Overview of backend health, indexes, and recent activity")
-        title_col.addWidget(title)
-        title_col.addWidget(subtitle)
-
-        header_row.addLayout(title_col)
-        header_row.addStretch()
-
-        self.status_pill = StatusPill("CHECKING LINK", state="idle")
-        header_row.addWidget(self.status_pill)
-        root.addLayout(header_row)
+        subtitle = DimLabel("Quick system summary and recent operator activity.")
+        header.addWidget(title)
+        header.addWidget(subtitle)
+        root.addLayout(header)
 
         metrics = QGridLayout()
         metrics.setHorizontalSpacing(14)
         metrics.setVerticalSpacing(14)
-        self.metric_pipelines = MetricCard("Active pipelines", "-")
-        self.metric_profiles = MetricCard("Total profiles", "-")
-        self.metric_pretrained = MetricCard("Pretrained index", "-")
-        self.metric_custom = MetricCard("Custom index", "-")
+        self.metric_pipelines = MetricCard("Pipelines", "-")
+        self.metric_profiles = MetricCard("Profiles", "-")
+        self.metric_vectors = MetricCard("Indexed vectors", "-")
         metrics.addWidget(self.metric_pipelines, 0, 0)
         metrics.addWidget(self.metric_profiles, 0, 1)
-        metrics.addWidget(self.metric_pretrained, 0, 2)
-        metrics.addWidget(self.metric_custom, 0, 3)
+        metrics.addWidget(self.metric_vectors, 0, 2)
         root.addLayout(metrics)
 
         main_row = QHBoxLayout()
         main_row.setSpacing(18)
 
-        hero_card = Card()
-        hero = hero_card.body()
-        hero.addWidget(SectionHeading("Overview"))
+        overview_card = Card()
+        overview = overview_card.body()
+        overview.addWidget(SectionHeading("System overview"))
 
-        self.hero_headline = QLabel("Ready for search, enroll, and compare")
-        self.hero_headline.setObjectName("metricValue")
-        self.hero_headline.setStyleSheet("font-size: 28px; background: transparent;")
-        self.hero_meta = DimLabel(
-            "Use Face Search for live queries, enroll new profiles, or compare both models on the same image."
+        self.overview_headline = QLabel("Waiting for backend response")
+        self.overview_headline.setObjectName("metricValue")
+        self.overview_headline.setStyleSheet("font-size: 26px; background: transparent;")
+        self.overview_text = DimLabel(
+            "Open Face Search to run queries, compare pipelines, or enroll new records."
         )
-        hero.addWidget(self.hero_headline)
-        hero.addWidget(self.hero_meta)
-        hero.addSpacing(10)
+        overview.addWidget(self.overview_headline)
+        overview.addWidget(self.overview_text)
 
-        quick_row = QHBoxLayout()
-        quick_row.setSpacing(10)
+        self.overview_lines = QLabel("No data loaded yet.")
+        self.overview_lines.setObjectName("dropZoneSubtitle")
+        self.overview_lines.setStyleSheet(
+            "padding: 14px; border: 1px solid #25313d; border-radius: 8px; background-color: #0f151d;"
+        )
+        overview.addWidget(self.overview_lines)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(10)
         search_btn = ActionButton("Open face search", primary=True)
-        db_btn = ActionButton("Open database")
+        database_btn = ActionButton("Open database")
         logs_btn = ActionButton("Open logs")
         search_btn.clicked.connect(partial(self._navigate, "search"))
-        db_btn.clicked.connect(partial(self._navigate, "database"))
+        database_btn.clicked.connect(partial(self._navigate, "database"))
         logs_btn.clicked.connect(partial(self._navigate, "logs"))
-        quick_row.addWidget(search_btn)
-        quick_row.addWidget(db_btn)
-        quick_row.addWidget(logs_btn)
-        quick_row.addStretch()
-        hero.addLayout(quick_row)
-
-        hero.addSpacing(10)
-        self.snapshot_view = QLabel(
-            "No data loaded yet.\n\nRefresh the dashboard to inspect backend health, index statistics, and recent activity."
-        )
-        self.snapshot_view.setObjectName("dropZoneSubtitle")
-        self.snapshot_view.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        self.snapshot_view.setMinimumHeight(260)
-        self.snapshot_view.setStyleSheet(
-            "padding: 18px; border: 1px solid #243241; background-color: #0c1219;"
-        )
-        hero.addWidget(self.snapshot_view, 1)
-        main_row.addWidget(hero_card, 3)
+        actions.addWidget(search_btn)
+        actions.addWidget(database_btn)
+        actions.addWidget(logs_btn)
+        actions.addStretch()
+        overview.addLayout(actions)
+        main_row.addWidget(overview_card, 3)
 
         activity_card = Card()
-        ac = activity_card.body()
-        ac.addWidget(SectionHeading("Recent activity"))
+        activity = activity_card.body()
+        activity.addWidget(SectionHeading("Recent activity"))
         self.activity_layout = QVBoxLayout()
         self.activity_layout.setSpacing(10)
-        ac.addLayout(self.activity_layout)
-        ac.addStretch()
+        activity.addLayout(self.activity_layout)
+        activity.addStretch()
         main_row.addWidget(activity_card, 2)
 
         root.addLayout(main_row, 1)
@@ -126,15 +102,10 @@ class DashboardTab(QWidget):
     def _gather_dashboard(self) -> dict:
         health = self.api.health()
         persons = self.api.list_persons()
-        pipelines = health.get("available_pipelines", [])
         stats = {}
-        for pipeline in pipelines:
+        for pipeline in health.get("available_pipelines", []):
             stats[pipeline] = self.api.index_stats(pipeline)
-        return {
-            "health": health,
-            "persons": persons,
-            "stats": stats,
-        }
+        return {"health": health, "persons": persons, "stats": stats}
 
     def _load(self) -> None:
         if self._worker is not None and self._worker.isRunning():
@@ -151,42 +122,30 @@ class DashboardTab(QWidget):
         persons = payload.get("persons", [])
         stats = payload.get("stats", {})
 
-        available = health.get("available_pipelines", [])
-        self.status_pill.set_state("ok", f"ONLINE / {' + '.join(str(v).upper() for v in available)}")
-        self.metric_pipelines.set_value(str(len(available)), f"Default: {health.get('default_pipeline', '-')}")
+        pipelines = [str(item) for item in health.get("available_pipelines", [])]
+        total_vectors = sum(int(stats.get(name, {}).get("embeddings_count", 0)) for name in pipelines)
+        self.metric_pipelines.set_value(str(len(pipelines)), ", ".join(pipelines) if pipelines else "Unavailable")
         self.metric_profiles.set_value(str(len(persons)), "Active records")
+        self.metric_vectors.set_value(str(total_vectors), f"Default: {health.get('default_pipeline', '-')}")
 
         pretrained = stats.get("pretrained", {})
         custom = stats.get("custom", {})
-        self.metric_pretrained.set_value(
-            str(pretrained.get("embeddings_count", 0)),
-            f"{pretrained.get('model_name', 'onnx')} / {pretrained.get('index_type', '-')}",
+        self.overview_headline.setText("System is ready" if pipelines else "Backend is reachable")
+        self.overview_text.setText(
+            "Use Face Search for the main workflow. Database and Logs remain secondary operational tools."
         )
-        custom_detail = f"{custom.get('model_name', 'n/a')} / {custom.get('index_type', '-')}"
-        self.metric_custom.set_value(str(custom.get("embeddings_count", 0)), custom_detail)
-
-        self.snapshot_view.setText(
+        self.overview_lines.setText(
             "\n".join(
                 [
-                    f"DEFAULT PIPELINE   {health.get('default_pipeline', '-')}",
-                    f"MULTI-FACE SEARCH  {health.get('multi_face_search', False)}",
-                    f"STRICT ENROLL      {health.get('strict_single_face_enroll', False)}",
-                    "",
-                    f"PRETRAINED LOADED  {pretrained.get('loaded', False)}",
-                    f"PRETRAINED PATH    {pretrained.get('file_path', '-')}",
-                    "",
-                    f"CUSTOM LOADED      {custom.get('loaded', False)}",
-                    f"CUSTOM PATH        {custom.get('file_path', '-')}",
-                    "",
-                    "RECENT PROFILES",
-                    *[
-                        f"  - {(person.get('label') or 'UNNAMED')} :: {person.get('id', '')[:12]}"
-                        for person in persons[:6]
-                    ],
+                    f"Default pipeline: {health.get('default_pipeline', '-')}",
+                    f"Multi-face search: {health.get('multi_face_search', False)}",
+                    f"Single-face enroll: {health.get('strict_single_face_enroll', False)}",
+                    f"Pretrained index: {pretrained.get('embeddings_count', 0)} vectors",
+                    f"Custom index: {custom.get('embeddings_count', 0)} vectors",
+                    f"Latest profile: {(persons[0].get('label') if persons else 'No records yet')}",
                 ]
             )
         )
-
         self._render_activity()
 
     def _render_activity(self) -> None:
@@ -196,31 +155,31 @@ class DashboardTab(QWidget):
             if widget is not None:
                 widget.deleteLater()
 
-        events = recent_events(limit=7)
+        events = recent_events(limit=6)
         if not events:
-            empty = DimLabel("No recent activity yet.")
-            self.activity_layout.addWidget(empty)
+            self.activity_layout.addWidget(DimLabel("No recent activity yet."))
             return
 
         for event in events:
-            row = Card(variant="default")
+            row = Card(variant="subtle")
             body = row.body()
-            severity = event.severity
+            body.setContentsMargins(12, 12, 12, 12)
             body.addWidget(DimLabel(event.timestamp.strftime("%Y-%m-%d %H:%M:%S")))
-            title = QLabel(f"{severity}  {event.category.upper()}")
+            title = QLabel(f"{event.category.title()} · {event.severity}")
             title.setObjectName("topbarTitle")
+            title.setStyleSheet("font-size: 13px;")
             body.addWidget(title)
             body.addWidget(DimLabel(event.message))
             if event.details:
-                detail = DimLabel(event.details[:140])
-                body.addWidget(detail)
+                body.addWidget(DimLabel(event.details[:140]))
             self.activity_layout.addWidget(row)
 
         self.activity_layout.addStretch()
 
     def _on_error(self, error: str) -> None:
-        self.status_pill.set_state("error", "NODE OFFLINE")
-        self.metric_pipelines.set_value("-", "Health request failed")
+        self.metric_pipelines.set_value("-", "Request failed")
+        self.metric_profiles.set_value("-", "")
+        self.metric_vectors.set_value("-", "")
         show_error(self, "Dashboard refresh failed", error)
 
     def showEvent(self, event) -> None:
