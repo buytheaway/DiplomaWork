@@ -3,9 +3,10 @@ device: "cuda"
 amp: true
 
 data:
-  train_dir: "datasets/celeba_faces/train"
-  val_dir: "datasets/celeba_faces/val"
-  pairs_file: ""
+  train_dir: "data/casia_webface/train"
+  val_dir: "data/casia_webface/val"
+  pairs_file: "data/lfw/pairs.txt"
+  lfw_dir: "data/lfw_aligned"
   num_workers: 4
   input_size: 112
 
@@ -15,14 +16,16 @@ model:
   normalize: true
 
 loss:
+  type: "arcface"       # "arcface" or "adaface"
   margin: 0.5
   scale: 64.0
 
 train:
-  batch_size: 64
-  epochs: 20
+  batch_size: 128
+  epochs: 28
   log_interval: 100
-  save_every: 1
+  save_every: 4
+  max_grad_norm: 5.0
   output_dir: "training/outputs"
 
 optimizer:
@@ -31,5 +34,5 @@ optimizer:
   momentum: 0.9
 
 scheduler:
-  step_size: 10
+  milestones: [8, 14, 20, 25]
   gamma: 0.1

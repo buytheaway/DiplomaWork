@@ -15,6 +15,7 @@ from app.api.schemas.search import (
     CompareSearchItem,
     CompareSearchResponse,
     DetectedFaceInfo,
+    LatencyBreakdown,
     SearchResponse,
     SearchResult,
 )
@@ -53,6 +54,7 @@ class RawSearchOutcome:
     best_match_above_threshold: bool
     decision: str
     error: str | None = None
+    latency_breakdown: LatencyBreakdown | None = None
 
 
 def _map_face_error(exc: Exception) -> HTTPException:
@@ -65,10 +67,18 @@ def _map_face_error(exc: Exception) -> HTTPException:
 
 def _run_pipeline_search(runtime, image_bytes: bytes, k: int) -> RawSearchOutcome:
     start = time.perf_counter()
+
+    # --- Stage 1: detect + embed ---
+    t_detect = time.perf_counter()
     detected_faces = runtime.extractor.extract_embeddings(image_bytes)
+    t_embed_done = time.perf_counter()
+    detect_embed_ms = (t_embed_done - t_detect) * 1000
+
     threshold = settings.match_threshold
     faces: list[RawFaceOutcome] = []
 
+    # --- Stage 2: search ---
+    t_search = time.perf_counter()
     for face_index, detected in enumerate(detected_faces):
         matches: list[IndexMatch] = []
         if runtime.index_manager.count() > 0:
@@ -87,6 +97,8 @@ def _run_pipeline_search(runtime, image_bytes: bytes, k: int) -> RawSearchOutcom
                 decision="match" if above else "unknown",
             )
         )
+    t_search_done = time.perf_counter()
+    search_ms = (t_search_done - t_search) * 1000
 
     best_score = max(
         (face.best_score for face in faces if face.best_score is not None),
@@ -94,6 +106,13 @@ def _run_pipeline_search(runtime, image_bytes: bytes, k: int) -> RawSearchOutcom
     )
     any_match = any(face.best_match_above_threshold for face in faces)
     latency_ms = (time.perf_counter() - start) * 1000
+
+    latency_breakdown = LatencyBreakdown(
+        detect_ms=round(detect_embed_ms, 2),
+        embed_ms=None,  # detect+embed are currently fused
+        search_ms=round(search_ms, 2),
+        total_ms=round(latency_ms, 2),
+    )
 
     return RawSearchOutcome(
         pipeline=runtime.key,
@@ -104,6 +123,7 @@ def _run_pipeline_search(runtime, image_bytes: bytes, k: int) -> RawSearchOutcom
         best_score=best_score,
         best_match_above_threshold=any_match,
         decision="match" if any_match else "unknown",
+        latency_breakdown=latency_breakdown,
     )
 
 
@@ -174,6 +194,7 @@ def _response_from_outcome(
         latency_ms=outcome.latency_ms,
         available_pipelines=available_pipelines,
         detected_faces=detected_faces,
+        latency_breakdown=outcome.latency_breakdown,
     )
 
 

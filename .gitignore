@@ -57,5 +57,12 @@ training/checkpoints/
 training/config.eval.yaml
 tmp/
 backend/tmp/
-docs
-training
+docs/
+
+# Logs
+backend/logs/
+desktop/logs/
+*.log
+
+# Workspace files
+*.code-workspace

@@ -11,6 +11,13 @@ class DetectedFaceInfo(BaseModel):
     face_bbox: list[float] | None = None
 
 
+class LatencyBreakdown(BaseModel):
+    detect_ms: float | None = None
+    embed_ms: float | None = None
+    search_ms: float | None = None
+    total_ms: float | None = None
+
+
 class SearchResult(BaseModel):
     pipeline: str | None = None
     face_index: int = 0
@@ -37,6 +44,7 @@ class SearchResponse(BaseModel):
     latency_ms: float | None = None
     available_pipelines: list[str] = Field(default_factory=list)
     detected_faces: list[DetectedFaceInfo] = Field(default_factory=list)
+    latency_breakdown: LatencyBreakdown | None = None
 
 
 class CompareSearchItem(BaseModel):
@@ -52,6 +60,7 @@ class CompareSearchItem(BaseModel):
     latency_ms: float | None = None
     error: str | None = None
     detected_faces: list[DetectedFaceInfo] = Field(default_factory=list)
+    latency_breakdown: LatencyBreakdown | None = None
 
 
 class CompareSearchResponse(BaseModel):

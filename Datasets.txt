@@ -1,0 +1,16 @@
+FaceID-550
+https://data.mendeley.com/datasets/zs2vnf9692/2
+
+CC0: Public Domain
+Face-Detection-Dataset
+https://www.kaggle.com/datasets/fareselmenshawii/face-detection-dataset
+
+Face Dataset Of People That Don't Exist
+https://www.kaggle.com/datasets/bwandowando/all-these-people-dont-exist
+
+CelebA
+https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html
+
+DigiFace-1M
+https://github.com/microsoft/DigiFace1M
+
