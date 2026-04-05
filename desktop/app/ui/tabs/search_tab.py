@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import time
@@ -663,15 +663,21 @@ class SearchTab(QWidget):
             self.live_status.set_state("error", "Camera read failed")
             return
         self._latest_frame = frame
-        self._frame_for_request = frame.copy()
-        self._show_frame(self._draw_live_annotations(frame.copy()))
+        # Only copy for the API request if the previous one was consumed
+        if self._frame_for_request is None:
+            self._frame_for_request = frame.copy()
+        # Draw annotations (if any) directly onto a display copy
+        display = frame if not self._live_annotations else self._draw_live_annotations(frame.copy())
+        self._show_frame(display)
 
     def _submit_live_frame(self) -> None:
         if not self._live_running or self._frame_for_request is None:
             return
         if self._worker is not None and self._worker.isRunning():
             return
-        encoded = self._encode_frame(self._frame_for_request)
+        frame = self._frame_for_request
+        self._frame_for_request = None  # mark as consumed
+        encoded = self._encode_frame(frame)
         if encoded is None:
             self.live_status.set_state("error", "Encode failed")
             return
@@ -680,7 +686,12 @@ class SearchTab(QWidget):
     def _encode_frame(self, frame: Any) -> bytes | None:
         if cv2 is None:
             return None
-        ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        # Downscale large frames for faster encoding and network transfer
+        h, w = frame.shape[:2]
+        if w > 640:
+            scale = 640 / w
+            frame = cv2.resize(frame, (640, int(h * scale)), interpolation=cv2.INTER_AREA)
+        ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
         if not ok:
             return None
         return buffer.tobytes()
@@ -696,6 +707,13 @@ class SearchTab(QWidget):
     def _frame_to_pixmap(self, frame: Any) -> QPixmap | None:
         if cv2 is None:
             return None
+        # Downscale for display if the frame is very large
+        h, w = frame.shape[:2]
+        max_w = 640
+        if w > max_w:
+            scale = max_w / w
+            frame = cv2.resize(frame, (max_w, int(h * scale)), interpolation=cv2.INTER_AREA)
+            h, w = frame.shape[:2]
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width, channels = rgb.shape
         bytes_per_line = channels * width
@@ -746,8 +764,8 @@ class SearchTab(QWidget):
             return
         self._live_annotations = self._extract_annotations(payload)
         self._render_frame_faces(self._live_annotations)
-        if self._latest_frame is not None:
-            self._show_frame(self._draw_live_annotations(self._latest_frame.copy()))
+        # No need to force-redraw here; the camera timer will pick up
+        # the new annotations on the next frame tick (~33ms away)
 
     def _overlay_color(self, quality: str) -> tuple[int, int, int]:
         if quality == "match":
