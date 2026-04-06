@@ -1,31 +1,4 @@
-"""LFW pairwise verification evaluation.
-
-Loads a trained IR-50 (or IR-18) checkpoint and evaluates it on the
-standard Labeled Faces in the Wild (LFW) pairs protocol.
-
-The script expects:
-  - A directory of aligned 112×112 LFW images in the structure:
-      lfw_aligned/
-        Abel_Pacheco/
-          Abel_Pacheco_0001.jpg
-          Abel_Pacheco_0004.jpg
-        ...
-  - A pairs.txt file in the standard LFW format:
-      10 (number of folds — informational, not used)
-      Abel_Pacheco	1	4       ← positive pair
-      Abdel_Madi_Shabneh	1	Dean_Barker	1  ← negative pair
-
-Usage::
-
-    python training/eval_lfw.py \\
-        --weights training/outputs/checkpoint_epoch_028.pth \\
-        --lfw-dir data/lfw_aligned \\
-        --pairs data/pairs.txt \\
-        --device cuda
-
-Outputs: accuracy, AUC, TAR@FAR=1e-3, best threshold, and saves ROC
-data to a JSON file.
-"""
+"""LFW pairwise verification evaluation with fold-based threshold selection."""
 
 from __future__ import annotations
 
@@ -41,6 +14,7 @@ if str(ROOT) not in sys.path:
 import numpy as np
 import torch
 from PIL import Image
+from sklearn.metrics import roc_auc_score, roc_curve
 from torchvision import transforms
 from tqdm import tqdm
 
@@ -48,24 +22,30 @@ from training.models.ir_resnet import build_model
 from training.utils import load_config, set_seed
 
 
-def _load_pairs(pairs_path: Path) -> list[tuple[str, int, str, int]]:
-    """Parse LFW pairs.txt into a list of (name1, idx1, name2, idx2)."""
+def _load_pairs(pairs_path: Path) -> tuple[int, list[tuple[str, int, str, int]]]:
+    num_folds = 10
     pairs: list[tuple[str, int, str, int]] = []
-    with open(pairs_path, encoding="utf-8") as f:
-        for line in f:
-            parts = line.strip().split("\t")
+
+    with open(pairs_path, encoding="utf-8") as handle:
+        for line_index, line in enumerate(handle):
+            parts = line.strip().split()
+            if not parts:
+                continue
+
+            if line_index == 0 and len(parts) == 1 and parts[0].isdigit():
+                num_folds = int(parts[0])
+                continue
+
             if len(parts) == 3:
-                # Positive pair: name idx1 idx2
                 name = parts[0]
                 pairs.append((name, int(parts[1]), name, int(parts[2])))
             elif len(parts) == 4:
-                # Negative pair: name1 idx1 name2 idx2
                 pairs.append((parts[0], int(parts[1]), parts[2], int(parts[3])))
-    return pairs
+
+    return num_folds, pairs
 
 
 def _image_path(lfw_dir: Path, name: str, idx: int) -> Path:
-    """Construct the image path for a given LFW identity and index."""
     return lfw_dir / name / f"{name}_{idx:04d}.jpg"
 
 
@@ -74,14 +54,51 @@ def _extract_embedding(
     img_path: Path,
     transform: transforms.Compose,
     device: torch.device,
+    cache: dict[Path, np.ndarray],
 ) -> np.ndarray:
-    """Load an image and extract a normalized embedding."""
-    img = Image.open(img_path).convert("RGB")
-    tensor = transform(img).unsqueeze(0).to(device)
+    cached = cache.get(img_path)
+    if cached is not None:
+        return cached
+
+    image = Image.open(img_path).convert("RGB")
+    tensor = transform(image).unsqueeze(0).to(device)
     with torch.no_grad():
-        emb = model(tensor)
-        emb = torch.nn.functional.normalize(emb, p=2, dim=1)
-    return emb.cpu().numpy().flatten()
+        embedding = model(tensor)
+        embedding = torch.nn.functional.normalize(embedding, p=2, dim=1)
+
+    vector = embedding.cpu().numpy().flatten()
+    cache[img_path] = vector
+    return vector
+
+
+def _find_best_threshold(
+    similarities: np.ndarray,
+    labels: np.ndarray,
+    thresholds: np.ndarray,
+) -> tuple[float, float]:
+    best_threshold = 0.0
+    best_accuracy = -1.0
+    for threshold in thresholds:
+        predictions = (similarities >= threshold).astype(np.int32)
+        accuracy = float((predictions == labels).mean())
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            best_threshold = float(threshold)
+    return best_threshold, best_accuracy
+
+
+def _threshold_for_far(
+    similarities: np.ndarray,
+    labels: np.ndarray,
+    target_far: float,
+) -> float:
+    negative_scores = np.sort(similarities[labels == 0])
+    if len(negative_scores) == 0:
+        return 1.0
+
+    rank = int(np.ceil((1.0 - target_far) * len(negative_scores))) - 1
+    rank = min(max(rank, 0), len(negative_scores) - 1)
+    return float(negative_scores[rank])
 
 
 def evaluate_lfw(
@@ -91,84 +108,117 @@ def evaluate_lfw(
     transform: transforms.Compose,
     device: torch.device,
 ) -> dict:
-    """Run the full LFW verification benchmark."""
-    pairs = _load_pairs(pairs_path)
+    num_folds, pairs = _load_pairs(pairs_path)
     if not pairs:
         raise ValueError(f"No pairs loaded from {pairs_path}")
 
+    embedding_cache: dict[Path, np.ndarray] = {}
     similarities: list[float] = []
-    labels: list[int] = []  # 1 = same person, 0 = different person
+    labels: list[int] = []
+    fold_ids: list[int] = []
+    skipped_pairs = 0
 
-    for name1, idx1, name2, idx2 in tqdm(pairs, desc="LFW evaluation"):
+    fold_size = max(1, len(pairs) // max(num_folds, 1))
+    for pair_index, (name1, idx1, name2, idx2) in enumerate(
+        tqdm(pairs, desc="LFW evaluation")
+    ):
         path1 = _image_path(lfw_dir, name1, idx1)
         path2 = _image_path(lfw_dir, name2, idx2)
-
         if not path1.exists() or not path2.exists():
+            skipped_pairs += 1
             continue
 
-        emb1 = _extract_embedding(model, path1, transform, device)
-        emb2 = _extract_embedding(model, path2, transform, device)
+        emb1 = _extract_embedding(model, path1, transform, device, embedding_cache)
+        emb2 = _extract_embedding(model, path2, transform, device, embedding_cache)
 
-        # Cosine similarity (embeddings are already L2-normalized)
-        sim = float(np.dot(emb1, emb2))
-        similarities.append(sim)
+        similarities.append(float(np.dot(emb1, emb2)))
         labels.append(1 if name1 == name2 else 0)
+        fold_ids.append(min(pair_index // fold_size, max(num_folds - 1, 0)))
 
-    similarities = np.array(similarities)
-    labels = np.array(labels)
+    if not labels:
+        raise ValueError("No valid LFW pairs were evaluated")
 
-    # Find optimal threshold
-    thresholds = np.arange(-1.0, 1.0, 0.001)
-    best_acc = 0.0
-    best_threshold = 0.0
+    scores = np.asarray(similarities, dtype=np.float32)
+    targets = np.asarray(labels, dtype=np.int32)
+    fold_ids_np = np.asarray(fold_ids, dtype=np.int32)
+    thresholds = np.linspace(-1.0, 1.0, num=4001, dtype=np.float32)
 
-    for t in thresholds:
-        preds = (similarities >= t).astype(int)
-        acc = float((preds == labels).mean())
-        if acc > best_acc:
-            best_acc = acc
-            best_threshold = float(t)
+    fold_metrics: list[dict] = []
+    accuracies: list[float] = []
+    best_thresholds: list[float] = []
+    tar_at_far_values = {
+        "TAR@FAR=0.1": [],
+        "TAR@FAR=0.01": [],
+        "TAR@FAR=0.001": [],
+        "TAR@FAR=0.0001": [],
+    }
 
-    # Compute TAR@FAR for various FAR levels
-    positive_sims = similarities[labels == 1]
-    negative_sims = similarities[labels == 0]
+    for fold_id in range(max(fold_ids_np.max() + 1, 1)):
+        test_mask = fold_ids_np == fold_id
+        train_mask = ~test_mask
+        if not test_mask.any() or not train_mask.any():
+            continue
 
-    tar_at_far = {}
-    for target_far in [1e-1, 1e-2, 1e-3, 1e-4]:
-        # Find threshold where FAR = target_far
-        sorted_neg = np.sort(negative_sims)[::-1]
-        idx = int(len(sorted_neg) * target_far)
-        if idx >= len(sorted_neg):
-            idx = len(sorted_neg) - 1
-        threshold_at_far = float(sorted_neg[max(idx, 0)])
-        tar = float((positive_sims >= threshold_at_far).mean())
-        tar_at_far[f"TAR@FAR={target_far}"] = {
-            "tar": round(tar, 4),
-            "threshold": round(threshold_at_far, 4),
+        train_scores = scores[train_mask]
+        train_targets = targets[train_mask]
+        test_scores = scores[test_mask]
+        test_targets = targets[test_mask]
+
+        best_threshold, _ = _find_best_threshold(train_scores, train_targets, thresholds)
+        test_predictions = (test_scores >= best_threshold).astype(np.int32)
+        test_accuracy = float((test_predictions == test_targets).mean())
+
+        fold_result = {
+            "fold": int(fold_id + 1),
+            "accuracy": round(test_accuracy, 4),
+            "threshold": round(best_threshold, 4),
         }
 
-    # Compute AUC (trapezoidal)
-    from sklearn.metrics import roc_auc_score, roc_curve
+        for far in [1e-1, 1e-2, 1e-3, 1e-4]:
+            far_threshold = _threshold_for_far(train_scores, train_targets, far)
+            positive_test_scores = test_scores[test_targets == 1]
+            tar = (
+                float((positive_test_scores >= far_threshold).mean())
+                if len(positive_test_scores) > 0
+                else 0.0
+            )
+            key = f"TAR@FAR={far}"
+            tar_at_far_values[key].append(tar)
+            fold_result[key] = {
+                "tar": round(tar, 4),
+                "threshold": round(far_threshold, 4),
+            }
+
+        fold_metrics.append(fold_result)
+        accuracies.append(test_accuracy)
+        best_thresholds.append(best_threshold)
 
     try:
-        auc = float(roc_auc_score(labels, similarities))
-        fpr, tpr, roc_thresholds = roc_curve(labels, similarities)
-        roc_data = {
-            "fpr": fpr.tolist(),
-            "tpr": tpr.tolist(),
-        }
+        auc = float(roc_auc_score(targets, scores))
+        fpr, tpr, _ = roc_curve(targets, scores)
+        roc_data = {"fpr": fpr.tolist(), "tpr": tpr.tolist()}
     except Exception:
         auc = -1.0
         roc_data = {}
 
+    tar_summary = {}
+    for key, values in tar_at_far_values.items():
+        tar_summary[key] = {
+            "tar": round(float(np.mean(values)) if values else 0.0, 4),
+            "tar_std": round(float(np.std(values)) if values else 0.0, 4),
+        }
+
     return {
-        "num_pairs": len(labels),
-        "num_positive": int(labels.sum()),
-        "num_negative": int(len(labels) - labels.sum()),
-        "accuracy": round(best_acc, 4),
-        "best_threshold": round(best_threshold, 4),
+        "num_pairs": int(len(targets)),
+        "skipped_pairs": int(skipped_pairs),
+        "num_positive": int(targets.sum()),
+        "num_negative": int(len(targets) - targets.sum()),
+        "accuracy": round(float(np.mean(accuracies)) if accuracies else 0.0, 4),
+        "accuracy_std": round(float(np.std(accuracies)) if accuracies else 0.0, 4),
+        "best_threshold": round(float(np.mean(best_thresholds)) if best_thresholds else 0.0, 4),
         "auc": round(auc, 4),
-        "tar_at_far": tar_at_far,
+        "tar_at_far": tar_summary,
+        "folds": fold_metrics,
         "roc_data": roc_data,
     }
 
@@ -177,8 +227,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="LFW pairwise verification benchmark")
     parser.add_argument("--config", default="training/config.yaml")
     parser.add_argument("--weights", required=True, help="Path to model checkpoint")
-    parser.add_argument("--lfw-dir", required=True, help="Path to aligned LFW images")
-    parser.add_argument("--pairs", required=True, help="Path to pairs.txt")
+    parser.add_argument("--lfw-dir", default=None, help="Path to aligned LFW images")
+    parser.add_argument("--pairs", default=None, help="Path to pairs.txt")
     parser.add_argument("--device", default=None)
     parser.add_argument("--output", default=None, help="Path to save results JSON")
     args = parser.parse_args()
@@ -188,41 +238,45 @@ def main() -> None:
 
     device = torch.device(args.device or config["device"])
     input_size = int(config["data"]["input_size"])
+    lfw_dir = Path(args.lfw_dir or config["data"]["lfw_dir"])
+    pairs_path = Path(args.pairs or config["data"]["pairs_file"])
 
-    transform = transforms.Compose([
-        transforms.Resize((input_size, input_size)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    ])
+    transform = transforms.Compose(
+        [
+            transforms.Resize((input_size, input_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ]
+    )
 
     model = build_model(config["model"]["arch"], config["model"]["embedding_dim"]).to(device)
     state = torch.load(args.weights, map_location=device, weights_only=False)
     model.load_state_dict(state.get("state_dict", state), strict=False)
     model.eval()
 
-    results = evaluate_lfw(model, Path(args.lfw_dir), Path(args.pairs), transform, device)
+    results = evaluate_lfw(model, lfw_dir, pairs_path, transform, device)
 
     print("\n" + "=" * 50)
     print("LFW Verification Results")
     print("=" * 50)
     print(f"  Pairs evaluated:  {results['num_pairs']}")
+    print(f"  Skipped pairs:    {results['skipped_pairs']}")
     print(f"  Positive pairs:   {results['num_positive']}")
     print(f"  Negative pairs:   {results['num_negative']}")
-    print(f"  Accuracy:         {results['accuracy']:.4f}")
-    print(f"  Best threshold:   {results['best_threshold']:.4f}")
+    print(f"  Accuracy:         {results['accuracy']:.4f} +/- {results['accuracy_std']:.4f}")
+    print(f"  Mean threshold:   {results['best_threshold']:.4f}")
     print(f"  AUC:              {results['auc']:.4f}")
     print()
     for key, val in results["tar_at_far"].items():
-        print(f"  {key}:  TAR={val['tar']:.4f}  (threshold={val['threshold']:.4f})")
+        print(f"  {key}:  TAR={val['tar']:.4f} +/- {val['tar_std']:.4f}")
     print("=" * 50)
 
     output_path = args.output or "training/outputs/lfw_results.json"
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    # Don't save huge ROC arrays to printed output
     save_results = {k: v for k, v in results.items() if k != "roc_data"}
     save_results["roc_data_points"] = len(results.get("roc_data", {}).get("fpr", []))
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(save_results, f, indent=2)
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump(save_results, handle, indent=2)
     print(f"\nResults saved to {output_path}")
 
 

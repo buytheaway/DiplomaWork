@@ -31,7 +31,15 @@ def ensure_dir(path: str | Path) -> Path:
 
 
 def save_checkpoint(
-    output_dir: Path, epoch: int, model_state: dict[str, Any], optimizer_state: dict[str, Any]
+    output_dir: Path,
+    epoch: int,
+    model_state: dict[str, Any],
+    optimizer_state: dict[str, Any],
+    *,
+    head_state: dict[str, Any] | None = None,
+    scheduler_state: dict[str, Any] | None = None,
+    scaler_state: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> Path:
     output_dir = ensure_dir(output_dir)
     ckpt = {
@@ -39,6 +47,14 @@ def save_checkpoint(
         "state_dict": model_state,
         "optimizer": optimizer_state,
     }
+    if head_state is not None:
+        ckpt["head_state_dict"] = head_state
+    if scheduler_state is not None:
+        ckpt["scheduler"] = scheduler_state
+    if scaler_state is not None:
+        ckpt["scaler"] = scaler_state
+    if metadata is not None:
+        ckpt["metadata"] = metadata
     path = output_dir / f"checkpoint_epoch_{epoch:03d}.pth"
     torch.save(ckpt, path)
     return path

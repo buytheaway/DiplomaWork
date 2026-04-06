@@ -19,6 +19,12 @@ class ArcFace(nn.Module):
         self.th = math.cos(math.pi - margin)
         self.mm = math.sin(math.pi - margin) * margin
 
+    def inference_logits(self, embeddings: torch.Tensor) -> torch.Tensor:
+        normalized_embeddings = F.normalize(embeddings)
+        normalized_weight = F.normalize(self.weight)
+        cosine = F.linear(normalized_embeddings, normalized_weight).clamp(-1.0, 1.0)
+        return cosine * self.scale
+
     def forward(self, embeddings: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         normalized_embeddings = F.normalize(embeddings)
         normalized_weight = F.normalize(self.weight)
