@@ -9,6 +9,7 @@ Supports three index types:
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ class FaissIndex(VectorIndex):
         self._index = self._build_index()
         self._id_map: dict[int, str] = {}
         self._next_id = 0
+        self._lock = threading.Lock()
 
     def _build_index(self):
         metric = faiss.METRIC_INNER_PRODUCT
@@ -56,25 +58,27 @@ class FaissIndex(VectorIndex):
         return vec / norm
 
     def add_embedding(self, embedding_id: str, vector: np.ndarray) -> int:
-        vector_id = self._next_id
-        self._next_id += 1
-        self._id_map[vector_id] = embedding_id
-
         vec = self._normalize(vector).reshape(1, -1).astype(np.float32)
-        ids = np.array([vector_id], dtype=np.int64)
-        self._index.add_with_ids(vec, ids)
+        with self._lock:
+            vector_id = self._next_id
+            self._next_id += 1
+            self._id_map[vector_id] = embedding_id
+            ids = np.array([vector_id], dtype=np.int64)
+            self._index.add_with_ids(vec, ids)
         return vector_id
 
     def search(self, vector: np.ndarray, k: int) -> list[VectorSearchResult]:
         if self.count() == 0:
             return []
         vec = self._normalize(vector).reshape(1, -1).astype(np.float32)
-        distances, ids = self._index.search(vec, k)
+        with self._lock:
+            distances, ids = self._index.search(vec, k)
+            id_map_snapshot = dict(self._id_map)
         results: list[VectorSearchResult] = []
         for score, vector_id in zip(distances[0], ids[0]):
             if vector_id < 0:
                 continue
-            embedding_id = self._id_map.get(int(vector_id))
+            embedding_id = id_map_snapshot.get(int(vector_id))
             if embedding_id is None:
                 continue
             score_val = float(score)
@@ -90,21 +94,23 @@ class FaissIndex(VectorIndex):
     def save(self, path: str) -> None:
         path_obj = Path(path)
         path_obj.parent.mkdir(parents=True, exist_ok=True)
-        faiss.write_index(self._index, str(path_obj))
-        map_path = path_obj.with_suffix(path_obj.suffix + ".map.json")
-        with map_path.open("w", encoding="utf-8") as handle:
-            json.dump(self._id_map, handle)
+        with self._lock:
+            faiss.write_index(self._index, str(path_obj))
+            map_path = path_obj.with_suffix(path_obj.suffix + ".map.json")
+            with map_path.open("w", encoding="utf-8") as handle:
+                json.dump(self._id_map, handle)
 
     def load(self, path: str) -> None:
         path_obj = Path(path)
-        self._index = faiss.read_index(str(path_obj))
-        map_path = path_obj.with_suffix(path_obj.suffix + ".map.json")
-        if map_path.exists():
-            with map_path.open("r", encoding="utf-8") as handle:
-                self._id_map = {int(k): v for k, v in json.load(handle).items()}
-        else:
-            self._id_map = {}
-        self._next_id = max(self._id_map.keys(), default=-1) + 1
+        with self._lock:
+            self._index = faiss.read_index(str(path_obj))
+            map_path = path_obj.with_suffix(path_obj.suffix + ".map.json")
+            if map_path.exists():
+                with map_path.open("r", encoding="utf-8") as handle:
+                    self._id_map = {int(k): v for k, v in json.load(handle).items()}
+            else:
+                self._id_map = {}
+            self._next_id = max(self._id_map.keys(), default=-1) + 1
 
     def count(self) -> int:
         return int(self._index.ntotal)
@@ -132,5 +138,6 @@ class FaissIndex(VectorIndex):
             return
         if vectors.size == 0:
             return
-        if not self._index.is_trained:
-            self._index.train(vectors.astype(np.float32))
+        with self._lock:
+            if not self._index.is_trained:
+                self._index.train(vectors.astype(np.float32))

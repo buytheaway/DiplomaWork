@@ -500,11 +500,19 @@ class OnnxEmbeddingExtractor(EmbeddingExtractor):
         return embeddings
 
     def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
+        # Early check: reject multi-face images before expensive embedding step.
+        if self.strict_single_face:
+            image, boxes, kps, scores = self._decode_and_detect(image_bytes)
+            if len(scores) != 1:
+                raise MultipleFacesDetectedError(
+                    f"Expected 1 face, detected {len(scores)}"
+                )
+            return self._extract_face_embedding(
+                image=image,
+                box=boxes[0],
+                landmarks=None if kps is None else kps[0],
+                score=float(scores[0]),
+            ).embedding
+
         embeddings = self.extract_embeddings(image_bytes)
-
-        if self.strict_single_face and len(embeddings) != 1:
-            raise MultipleFacesDetectedError(
-                f"Expected 1 face, detected {len(embeddings)}"
-            )
-
         return embeddings[0].embedding

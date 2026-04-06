@@ -1,9 +1,29 @@
+"""Face detection backends: InsightFace, OpenCV Haar, and image decoding.
+
+All ``cv2`` usage is lazy-imported so the module can be loaded even when
+OpenCV is absent (e.g. in dummy/test mode).
+"""
+
+from __future__ import annotations
+
 from dataclasses import dataclass
 
-import cv2
 import numpy as np
 
 from app.services.embeddings.interface import InvalidImageError
+
+
+def _ensure_cv2():
+    """Lazy-import ``cv2``; raise a clear message if absent."""
+    try:
+        import cv2
+
+        return cv2
+    except ImportError as exc:
+        raise ImportError(
+            "opencv-python-headless is required for face detection. "
+            "Install with: pip install opencv-python-headless"
+        ) from exc
 
 
 @dataclass
@@ -43,10 +63,12 @@ class InsightFaceDetector:
 
 class OpenCVHaarDetector:
     def __init__(self) -> None:
+        cv2 = _ensure_cv2()
         cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         self.detector = cv2.CascadeClassifier(cascade_path)
 
     def detect(self, image: np.ndarray) -> list[DetectedFace]:
+        cv2 = _ensure_cv2()
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         faces = self.detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
         results: list[DetectedFace] = []
@@ -65,6 +87,7 @@ class OpenCVHaarDetector:
 
 
 def decode_image(image_bytes: bytes) -> np.ndarray:
+    cv2 = _ensure_cv2()
     data = np.frombuffer(image_bytes, dtype=np.uint8)
     img = cv2.imdecode(data, cv2.IMREAD_COLOR)
     if img is None:

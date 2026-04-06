@@ -148,6 +148,9 @@ def _hydrate_results(
             row = lookup.get(match.embedding_id)
             if row is None or row.person is None:
                 continue
+            # Skip deactivated embeddings or soft-deleted persons
+            if not row.is_active or row.person.status != "active":
+                continue
             results.append(
                 SearchResult(
                     pipeline=pipeline,

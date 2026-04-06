@@ -11,7 +11,6 @@ import random
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
@@ -62,7 +61,6 @@ def create_app() -> FastAPI:
     setup_logging(settings.log_level)
 
     random.seed(settings.seed)
-    np.random.seed(settings.seed)
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
 

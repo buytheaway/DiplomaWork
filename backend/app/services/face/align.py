@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import cv2
 import numpy as np
 
 from app.services.embeddings.interface import InvalidImageError
@@ -43,5 +42,7 @@ def align_with_landmarks(
         cropped = image[start_y : start_y + size, start_x : start_x + size]
     if cropped.size == 0:
         raise InvalidImageError("Invalid image for center crop")
+
+    import cv2
 
     return cv2.resize(cropped, (112, 112))

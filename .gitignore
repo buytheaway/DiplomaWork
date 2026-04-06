@@ -66,3 +66,10 @@ desktop/logs/
 
 # Workspace files
 *.code-workspace
+
+# Obsidian local state
+Obsidian_Diploma_Vault/.obsidian/workspace.json
+Obsidian_Diploma_Vault/.obsidian/workspace-mobile.json
+Obsidian_Diploma_Vault/.obsidian/cache/
+Obsidian_Diploma_Vault/.obsidian/plugins/
+Obsidian_Diploma_Vault/.obsidian/.trash/

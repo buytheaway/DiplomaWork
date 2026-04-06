@@ -130,11 +130,19 @@ class InsightFaceEmbeddingExtractor(EmbeddingExtractor):
         return embeddings
 
     def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
+        # Early check: reject multi-face images before expensive embedding step.
+        if self.strict_single_face:
+            if not image_bytes:
+                raise InvalidImageError("Empty image bytes")
+            image = _decode_image(image_bytes)
+            faces = self._app.get(image)
+            if not faces:
+                raise NoFaceDetectedError("No face detected in image")
+            if len(faces) != 1:
+                raise MultipleFacesDetectedError(
+                    f"Expected 1 face, detected {len(faces)}"
+                )
+            return self._to_face_embedding(faces[0]).embedding
+
         embeddings = self.extract_embeddings(image_bytes)
-
-        if self.strict_single_face and len(embeddings) != 1:
-            raise MultipleFacesDetectedError(
-                f"Expected 1 face, detected {len(embeddings)}"
-            )
-
         return embeddings[0].embedding

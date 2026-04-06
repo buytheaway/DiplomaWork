@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 from app.core.config import BASE_DIR, Settings
@@ -79,6 +78,8 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         except AlignmentError as exc:
             raise NoFaceDetectedError(str(exc)) from exc
 
+        import cv2
+
         if aligned.shape[0] != self.input_size or aligned.shape[1] != self.input_size:
             aligned = cv2.resize(aligned, (self.input_size, self.input_size))
 
@@ -136,9 +137,18 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         return embeddings
 
     def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
+        # Early check: reject multi-face images before expensive embedding step.
+        if self.strict_single_face:
+            if not image_bytes:
+                raise InvalidImageError("Empty image bytes")
+            image = decode_image(image_bytes)
+            faces = self.detector.detect(image)
+            if not faces:
+                raise NoFaceDetectedError("No face detected")
+            if len(faces) != 1:
+                raise MultipleFacesDetectedError("Multiple faces detected")
+            best = max(faces, key=lambda f: f.det_score)
+            return self._extract_face_embedding(image, best).embedding
+
         embeddings = self.extract_embeddings(image_bytes)
-
-        if self.strict_single_face and len(embeddings) != 1:
-            raise MultipleFacesDetectedError("Multiple faces detected")
-
         return embeddings[0].embedding
