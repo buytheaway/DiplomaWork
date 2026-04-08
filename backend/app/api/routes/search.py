@@ -80,13 +80,15 @@ def _run_pipeline_search(runtime, image_bytes: bytes, k: int) -> RawSearchOutcom
 
     threshold = settings.match_threshold
     faces: list[RawFaceOutcome] = []
+    index_count = runtime.index_manager.count()
+    effective_k = min(k, index_count) if index_count > 0 else 0
 
     # --- Stage 2: search ---
     t_search = time.perf_counter()
     for face_index, detected in enumerate(detected_faces):
         matches: list[IndexMatch] = []
-        if runtime.index_manager.count() > 0:
-            matches = runtime.index_manager.search(detected.embedding, k)
+        if effective_k > 0:
+            matches = runtime.index_manager.search(detected.embedding, effective_k)
 
         best_score = matches[0].score if matches else None
         above = best_score is not None and best_score >= threshold
@@ -142,7 +144,18 @@ def _hydrate_results(
         for face in faces
         for match in face.matches
     ]
-    rows = repo.get_embeddings_with_person(embedding_ids)
+    if not embedding_ids:
+        return []
+
+    unique_embedding_ids: list[str] = []
+    seen_embedding_ids: set[str] = set()
+    for embedding_id in embedding_ids:
+        if embedding_id in seen_embedding_ids:
+            continue
+        seen_embedding_ids.add(embedding_id)
+        unique_embedding_ids.append(embedding_id)
+
+    rows = repo.get_embeddings_with_person(unique_embedding_ids)
     lookup = {str(row.id): row for row in rows}
 
     results: list[SearchResult] = []
@@ -233,19 +246,20 @@ async def search(
         raise _map_face_error(exc) from exc
 
     response = _response_from_outcome(db, outcome, k, registry.available_pipelines())
-    record_audit_event(
-        db,
-        request,
-        event_type="search",
-        status_code=200,
-        details={
-            "pipeline": outcome.pipeline,
-            "faces_detected": response.faces_detected,
-            "matched_faces": response.matched_faces,
-            "decision": response.decision,
-            "k": k,
-        },
-    )
+    if settings.enable_search_audit:
+        record_audit_event(
+            db,
+            request,
+            event_type="search",
+            status_code=200,
+            details={
+                "pipeline": outcome.pipeline,
+                "faces_detected": response.faces_detected,
+                "matched_faces": response.matched_faces,
+                "decision": response.decision,
+                "k": k,
+            },
+        )
     return response
 
 
@@ -336,16 +350,17 @@ async def search_compare(
         available_pipelines=available,
         fastest_pipeline=fastest,
     )
-    record_audit_event(
-        db,
-        request,
-        event_type="search_compare",
-        status_code=200,
-        details={
-            "pipelines": available,
-            "successful_pipelines": [item.pipeline for item in successful],
-            "fastest_pipeline": fastest,
-            "k": k,
-        },
-    )
+    if settings.enable_compare_audit:
+        record_audit_event(
+            db,
+            request,
+            event_type="search_compare",
+            status_code=200,
+            details={
+                "pipelines": available,
+                "successful_pipelines": [item.pipeline for item in successful],
+                "fastest_pipeline": fastest,
+                "k": k,
+            },
+        )
     return response

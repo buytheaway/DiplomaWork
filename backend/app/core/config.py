@@ -115,6 +115,8 @@ class Settings(BaseSettings):
     data_encryption_key: str = Field("", alias="DATA_ENCRYPTION_KEY")
     snapshot_encryption_key: str = Field("", alias="SNAPSHOT_ENCRYPTION_KEY")
     audit_retention_days: int = Field(30, alias="AUDIT_RETENTION_DAYS")
+    enable_search_audit: bool = Field(True, alias="ENABLE_SEARCH_AUDIT")
+    enable_compare_audit: bool = Field(True, alias="ENABLE_COMPARE_AUDIT")
 
     # ── runtime ──────────────────────────────────────────────────────────
     auto_save_index: bool = Field(True, alias="AUTO_SAVE_INDEX")

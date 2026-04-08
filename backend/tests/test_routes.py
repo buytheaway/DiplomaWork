@@ -6,8 +6,11 @@ session and wires up the full FastAPI app with ``DummyEmbeddingExtractor``.
 
 from __future__ import annotations
 
+from sqlalchemy import select
+
 from app.core.config import settings
-from app.services.embeddings.interface import DummyEmbeddingExtractor, FaceEmbedding
+from app.db.models import AuditLog
+from app.services.embeddings.interface import DummyEmbeddingExtractor, FaceEmbedding, NoFaceDetectedError
 from app.services.runtime.pipeline_registry import PipelineRuntime
 
 
@@ -127,6 +130,27 @@ def test_search_after_enroll(client):
     assert isinstance(body["best_match_above_threshold"], bool)
 
 
+def test_search_one_face_unknown(client, monkeypatch):
+    client.post(
+        "/v1/enroll",
+        files={"file": ("a.jpg", b"\x89PNG_unknown_case", "image/jpeg")},
+        data={"label": "ThresholdBob"},
+    )
+    monkeypatch.setattr(settings, "match_threshold", 1.1)
+
+    resp = client.post(
+        "/v1/search",
+        params={"k": 1},
+        files={"file": ("q.jpg", b"\x89PNG_query_unknown", "image/jpeg")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["faces_detected"] == 1
+    assert body["decision"] == "unknown"
+    assert body["best_match_above_threshold"] is False
+    assert len(body["results"]) >= 1
+
+
 def test_search_custom_pipeline_after_custom_enroll(client):
     client.post(
         "/v1/enroll",
@@ -164,6 +188,80 @@ def test_search_compare(client):
     assert {item["pipeline"] for item in body["comparisons"]} == {"pretrained", "custom"}
 
 
+def _strip_search_latency(payload: dict) -> dict:
+    normalized = dict(payload)
+    normalized["latency_ms"] = None
+    breakdown = normalized.get("latency_breakdown")
+    if isinstance(breakdown, dict):
+        normalized["latency_breakdown"] = {
+            "detect_ms": None,
+            "embed_ms": breakdown.get("embed_ms"),
+            "search_ms": None,
+            "total_ms": None,
+        }
+    return normalized
+
+
+def _strip_compare_latency(payload: dict) -> dict:
+    normalized = dict(payload)
+    comparisons = []
+    for item in normalized.get("comparisons", []):
+        row = dict(item)
+        row["latency_ms"] = None
+        row["latency_breakdown"] = None
+        comparisons.append(row)
+    normalized["comparisons"] = comparisons
+    return normalized
+
+
+def test_search_audit_can_be_disabled_without_changing_response(client, db_session, monkeypatch):
+    enabled_resp = client.post(
+        "/v1/search",
+        params={"k": 1},
+        files={"file": ("q.jpg", b"\x89PNG_query_audit_on", "image/jpeg")},
+    )
+    assert enabled_resp.status_code == 200
+
+    monkeypatch.setattr(settings, "enable_search_audit", False)
+
+    disabled_resp = client.post(
+        "/v1/search",
+        params={"k": 1},
+        files={"file": ("q.jpg", b"\x89PNG_query_no_audit", "image/jpeg")},
+    )
+
+    assert disabled_resp.status_code == 200
+    assert _strip_search_latency(enabled_resp.json()) == _strip_search_latency(disabled_resp.json())
+    logs = db_session.execute(
+        select(AuditLog).where(AuditLog.event_type == "search")
+    ).scalars().all()
+    assert len(logs) == 1
+
+
+def test_compare_audit_can_be_disabled_without_changing_response(client, db_session, monkeypatch):
+    enabled_resp = client.post(
+        "/v1/search/compare",
+        params={"k": 1},
+        files={"file": ("q.jpg", b"\x89PNG_compare_audit_on", "image/jpeg")},
+    )
+    assert enabled_resp.status_code == 200
+
+    monkeypatch.setattr(settings, "enable_compare_audit", False)
+
+    disabled_resp = client.post(
+        "/v1/search/compare",
+        params={"k": 1},
+        files={"file": ("q.jpg", b"\x89PNG_compare_no_audit", "image/jpeg")},
+    )
+
+    assert disabled_resp.status_code == 200
+    assert _strip_compare_latency(enabled_resp.json()) == _strip_compare_latency(disabled_resp.json())
+    logs = db_session.execute(
+        select(AuditLog).where(AuditLog.event_type == "search_compare")
+    ).scalars().all()
+    assert len(logs) == 1
+
+
 class _MultiFaceDummyExtractor(DummyEmbeddingExtractor):
     def __init__(self, dim: int = 512) -> None:
         super().__init__(dim=dim)
@@ -178,6 +276,15 @@ class _MultiFaceDummyExtractor(DummyEmbeddingExtractor):
             FaceEmbedding(embedding=base, detection_score=0.99, bbox=(0.0, 0.0, 16.0, 16.0)),
             FaceEmbedding(embedding=second, detection_score=0.95, bbox=(24.0, 8.0, 40.0, 24.0)),
         ]
+
+
+class _NoFaceDummyExtractor(DummyEmbeddingExtractor):
+    def __init__(self, dim: int = 512) -> None:
+        super().__init__(dim=dim)
+        self.model_name = "dummy_noface"
+
+    def extract_embeddings(self, image_bytes: bytes) -> list[FaceEmbedding]:
+        raise NoFaceDetectedError("No face detected in image")
 
 
 def test_search_multiple_faces_returns_face_indexes(client):
@@ -207,6 +314,26 @@ def test_search_multiple_faces_returns_face_indexes(client):
     assert body["faces_detected"] == 2
     assert {item["face_index"] for item in body["results"]} == {0, 1}
     assert all("detection_score" in item for item in body["results"])
+
+
+def test_search_no_faces_returns_422(client):
+    registry = client.app.state.pipeline_registry
+    runtime = registry.get("pretrained")
+    registry._pipelines["pretrained"] = PipelineRuntime(
+        key="pretrained",
+        backend=runtime.backend,
+        extractor=_NoFaceDummyExtractor(),
+        index_manager=runtime.index_manager,
+    )
+    client.app.state.extractor = registry.get("pretrained").extractor
+
+    resp = client.post(
+        "/v1/search",
+        params={"k": 1, "pipeline": "pretrained"},
+        files={"file": ("q.jpg", b"\x89PNG_no_face", "image/jpeg")},
+    )
+    assert resp.status_code == 422
+    assert "no face" in resp.json()["detail"].lower()
 
 
 def test_search_empty_file_returns_400(client):

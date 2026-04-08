@@ -17,3 +17,5 @@ class DesktopSettings:
     camera_index: int = int(os.getenv("CAMERA_INDEX", "0"))
     camera_preview_interval_ms: int = int(os.getenv("CAMERA_PREVIEW_INTERVAL_MS", "33"))
     live_scan_interval_ms: int = int(os.getenv("LIVE_SCAN_INTERVAL_MS", "1200"))
+    live_max_width: int = int(os.getenv("LIVE_MAX_WIDTH", "640"))
+    live_jpeg_quality: int = int(os.getenv("LIVE_JPEG_QUALITY", "75"))

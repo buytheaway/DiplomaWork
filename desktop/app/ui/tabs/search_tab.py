@@ -354,7 +354,8 @@ class SearchTab(QWidget):
 
         if origin == "live":
             self.live_status.set_state("warn", "Scanning")
-        record_event("search", f"Started {self._mode} request", severity="INFO", meta={"path": source_label})
+        else:
+            record_event("search", f"Started {self._mode} request", severity="INFO", meta={"path": source_label})
 
         if self._mode == "compare":
             self._worker = ApiWorker(self.api.search_compare, image_source, self.k_input.value(), parent=self)
@@ -384,7 +385,8 @@ class SearchTab(QWidget):
         self._worker = None
         self.execute_btn.setEnabled(True)
         latency_ms = (time.perf_counter() - self._request_started) * 1000
-        self.console.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+        if origin != "live" or self.details_section.is_expanded():
+            self.console.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
 
         if self._mode == "enroll":
             self._render_enroll(payload, latency_ms)
@@ -437,8 +439,8 @@ class SearchTab(QWidget):
         matched_faces = payload.get("matched_faces", 0)
         faces_detected = payload.get("faces_detected", 0)
         decision = payload.get("decision", "unknown")
-        pill_state = "ok" if decision == "match" else "warn"
 
+        pill_state = "ok" if decision == "match" else "warn"
         self.matches_pill.set_state(pill_state, f"{len(results)} matches")
         self.info_mode.set_value(str(payload.get("pipeline", "-")).title())
         self.info_best.set_value(f"{best_score:.4f}" if best_score is not None else "-")
@@ -446,12 +448,13 @@ class SearchTab(QWidget):
         self.info_faces.set_value(f"{matched_faces}/{faces_detected}")
 
         self._populate_results(results, empty_text="No matches returned for this query.")
-        record_event(
-            "search",
-            f"Search finished with {len(results)} results",
-            severity="INFO",
-            details=f"decision={decision} best_score={best_score}",
-        )
+        if self._request_origin != "live":
+            record_event(
+                "search",
+                f"Search finished with {len(results)} results",
+                severity="INFO",
+                details=f"decision={decision} best_score={best_score}",
+            )
 
     def _render_compare(self, payload: object, latency_ms: float) -> None:
         self._clear_results()
@@ -482,12 +485,13 @@ class SearchTab(QWidget):
 
         merged_results.sort(key=lambda item: float(item.get("score", 0.0)), reverse=True)
         self._populate_results(merged_results, empty_text="Compare completed, but no matches were returned.")
-        record_event(
-            "compare",
-            f"Compared pipelines, fastest={fastest}",
-            severity="INFO",
-            details=", ".join(best_summary),
-        )
+        if self._request_origin != "live":
+            record_event(
+                "compare",
+                f"Compared pipelines, fastest={fastest}",
+                severity="INFO",
+                details=", ".join(best_summary),
+            )
 
     def _clear_results(self) -> None:
         self.matches_table.setRowCount(0)
@@ -527,7 +531,8 @@ class SearchTab(QWidget):
         self.execute_btn.setEnabled(True)
         self.matches_pill.set_state("error", "Request failed")
         record_event("search", "Request failed", severity="ERROR", details=error)
-        self.console.setPlainText(error)
+        if origin != "live" or self.details_section.is_expanded():
+            self.console.setPlainText(error)
         if origin == "live":
             self.live_status.set_state("error", "Live error")
             return
@@ -666,7 +671,6 @@ class SearchTab(QWidget):
         # Only copy for the API request if the previous one was consumed
         if self._frame_for_request is None:
             self._frame_for_request = frame.copy()
-        # Draw annotations (if any) directly onto a display copy
         display = frame if not self._live_annotations else self._draw_live_annotations(frame.copy())
         self._show_frame(display)
 
@@ -686,12 +690,14 @@ class SearchTab(QWidget):
     def _encode_frame(self, frame: Any) -> bytes | None:
         if cv2 is None:
             return None
-        # Downscale large frames for faster encoding and network transfer
         h, w = frame.shape[:2]
-        if w > 640:
-            scale = 640 / w
-            frame = cv2.resize(frame, (640, int(h * scale)), interpolation=cv2.INTER_AREA)
-        ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+        # Downscale large frames for faster encoding and network transfer
+        max_width = max(160, self.settings.live_max_width)
+        if w > max_width:
+            scale = max_width / w
+            frame = cv2.resize(frame, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA)
+        quality = min(max(self.settings.live_jpeg_quality, 40), 95)
+        ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
         if not ok:
             return None
         return buffer.tobytes()
