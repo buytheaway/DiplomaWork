@@ -102,14 +102,24 @@ class FaissIndex(VectorIndex):
 
     def load(self, path: str) -> None:
         path_obj = Path(path)
+        map_path = path_obj.with_suffix(path_obj.suffix + ".map.json")
+        if not map_path.exists():
+            raise FileNotFoundError(
+                f"Missing FAISS sidecar map for {path_obj.name}: expected {map_path.name}"
+            )
+
         with self._lock:
-            self._index = faiss.read_index(str(path_obj))
-            map_path = path_obj.with_suffix(path_obj.suffix + ".map.json")
-            if map_path.exists():
-                with map_path.open("r", encoding="utf-8") as handle:
-                    self._id_map = {int(k): v for k, v in json.load(handle).items()}
-            else:
-                self._id_map = {}
+            loaded_index = faiss.read_index(str(path_obj))
+            with map_path.open("r", encoding="utf-8") as handle:
+                loaded_map = {int(k): v for k, v in json.load(handle).items()}
+            if int(loaded_index.ntotal) != len(loaded_map):
+                raise ValueError(
+                    f"FAISS map mismatch for {path_obj.name}: "
+                    f"index has {int(loaded_index.ntotal)} vectors, map has {len(loaded_map)} ids"
+                )
+
+            self._index = loaded_index
+            self._id_map = loaded_map
             self._next_id = max(self._id_map.keys(), default=-1) + 1
 
     def count(self) -> int:

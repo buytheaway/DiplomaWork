@@ -63,6 +63,36 @@ def test_faiss_index_empty_search():
     assert idx.search(np.array([1, 0, 0], dtype=np.float32), k=5) == []
 
 
+def test_faiss_index_load_requires_map_file(tmp_path):
+    idx = FaissIndex(dim=3, index_type="flat", params={}, seed=42)
+    idx.add_embedding("a", np.array([1.0, 0.0, 0.0], dtype=np.float32))
+    path = tmp_path / "strict.faiss"
+    idx.save(str(path))
+    path.with_suffix(".faiss.map.json").unlink()
+
+    reloaded = FaissIndex(dim=3, index_type="flat", params={}, seed=42)
+    try:
+        reloaded.load(str(path))
+        assert False, "Expected FileNotFoundError when map sidecar is missing"
+    except FileNotFoundError:
+        pass
+
+
+def test_faiss_index_load_rejects_map_mismatch(tmp_path):
+    idx = FaissIndex(dim=3, index_type="flat", params={}, seed=42)
+    idx.add_embedding("a", np.array([1.0, 0.0, 0.0], dtype=np.float32))
+    path = tmp_path / "broken.faiss"
+    idx.save(str(path))
+    path.with_suffix(".faiss.map.json").write_text("{}", encoding="utf-8")
+
+    reloaded = FaissIndex(dim=3, index_type="flat", params={}, seed=42)
+    try:
+        reloaded.load(str(path))
+        assert False, "Expected ValueError when map size does not match index size"
+    except ValueError:
+        pass
+
+
 # ── index manager ────────────────────────────────────────────────────────────
 
 
