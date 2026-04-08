@@ -1,8 +1,8 @@
 # DiplomaWork Vault
 
-Это стартовая заметка для подготовки к предзащите и защите проекта.
+This vault is the working knowledge base for the pre-defense and final defense.
 
-## Быстрый вход
+## Quick entry points
 
 - [[01_Project/01_Project_Overview]]
 - [[01_Project/02_Architecture]]
@@ -18,31 +18,31 @@
 - [[03_Research/03_Benchmarking]]
 - [[04_Diagrams/00_Diagrams_Index]]
 
-## Что здесь лежит
+## What is here
 
-- `01_Project` — устройство системы и основные компоненты
-- `02_Defense` — сценарий показа и ответы на вопросы
-- `03_Research` — датасеты, обучение, метрики
-- `04_Diagrams` — Mermaid-схемы для архитектуры и workflow
-- `99_Templates` — заготовки для новых заметок
+- `01_Project` - system structure and main components
+- `02_Defense` - demo order and defense answers
+- `03_Research` - datasets, training and benchmarking
+- `04_Diagrams` - Mermaid diagrams for architecture and workflows
+- `99_Templates` - note templates
 
-## Коротко о проекте
+## Short project summary
 
-DiplomaWork — это система быстрого поиска лиц в биометрической базе данных.
+DiplomaWork is a biometric face search system.
 
-Система состоит из:
+It includes:
 
-- backend на FastAPI;
-- desktop-клиента на PySide6;
-- FAISS для векторного поиска;
-- БД для хранения metadata и embeddings;
-- training-ветки для исследовательской части;
-- comparative pipeline для сравнения baseline и custom branch.
+- backend on FastAPI;
+- desktop client on PySide6;
+- FAISS vector search;
+- database storage for metadata and encrypted embeddings;
+- a research branch for training and evaluation;
+- a comparative branch for side-by-side runtime experiments.
 
-## Что проговаривать на защите в первую очередь
+## What to emphasize first during defense
 
-1. Проект — это не только модель, а полноценная система.
-2. Поиск по лицу разделён на extraction и ANN retrieval.
-3. БД хранит metadata и embeddings, а FAISS делает быстрый поиск.
-4. `Enroll` строгий, `Search` поддерживает multiple faces.
-5. Есть desktop, live webcam, compare mode и index maintenance.
+1. The project is a system, not only a model.
+2. Face search is split into extraction and ANN retrieval.
+3. Metadata is stored in DB, while FAISS handles vector search.
+4. `Enroll` is strict, `Search` and live webcam support multiple faces.
+5. The runtime includes auth, encrypted storage and audit logging.

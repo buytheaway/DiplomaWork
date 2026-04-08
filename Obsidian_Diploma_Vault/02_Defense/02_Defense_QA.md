@@ -1,44 +1,59 @@
 # Defense Q&A
 
-## Что это за проект?
+## What is this project?
 
-Это система быстрого поиска лиц в биометрической базе данных, состоящая из backend на FastAPI, desktop-клиента на PySide6, FAISS-индекса и слоя хранения metadata и embeddings.
+It is a fast biometric face search system built from a FastAPI backend, a PySide6 desktop client, FAISS indexes and a storage layer for metadata and embeddings.
 
-## Почему используется FAISS, а не просто база данных?
+## Why FAISS and not only a database?
 
-Потому что обычная SQL-БД удобна для хранения записей, но неэффективна для быстрого nearest-neighbor поиска по высокоразмерным embeddings. Поэтому БД хранит данные, а FAISS делает быстрый векторный поиск.
+SQL storage is good for records and metadata, but inefficient for fast nearest-neighbor search in high-dimensional embedding space.
+That is why SQL stores records, while FAISS performs vector retrieval.
 
-## Что именно хранится в системе?
+## What is stored in the system?
 
-Хранятся:
+The system stores:
 
 - `person`
 - `embedding`
 - `index snapshot`
+- `audit log`
 
-Сырые изображения по умолчанию не являются основным operational storage.
+Raw images are not used as the default operational storage.
 
-## Почему на enroll только одно лицо?
+## Why is enroll limited to one face?
 
-Чтобы база была чистой. Одна запись должна соответствовать одному валидному биометрическому образцу.
+Because one record should correspond to one valid biometric sample.
+This keeps the gallery cleaner and avoids ambiguous labels.
 
-## Почему search допускает несколько лиц?
+## Why does search allow multiple faces?
 
-Потому что search анализирует сцену. Если на фото или в кадре несколько человек, система может обработать их по отдельности.
+Because search analyzes a scene.
+If several people are visible, the system can process them one by one and return per-face results.
 
-## Что такое embedding?
+## What is an embedding?
 
-Это числовое представление лица, вектор фиксированной длины, по которому выполняется поиск похожих лиц.
+It is a numeric representation of a face, a fixed-length vector used for similarity search.
 
-## Зачем compare mode?
+## Why compare mode?
 
-Чтобы сравнивать два pipeline на одном и том же входе по quality и latency.
+To compare two pipelines on the same input by quality and latency.
 
-## Чем desktop полезен?
+## How are biometric data protected?
 
-Он показывает, что проект — это рабочий операторский инструмент, а не просто набор backend-endpoints.
+- API routes are protected by `API_KEY`;
+- admin actions use `ADMIN_API_KEY`;
+- embeddings are encrypted before being stored in the database;
+- FAISS snapshots are encrypted on disk;
+- audit logs record important actions;
+- retention policy removes old audit records.
 
-## Какие основные возможности уже реализованы?
+## Where are vectors stored?
+
+Vectors are stored in the `embeddings` table in the `vector` column.
+In PostgreSQL that column is `BYTEA`.
+It no longer stores raw float bytes directly; it stores an encrypted payload.
+
+## What is already implemented?
 
 - search
 - enroll
@@ -48,9 +63,10 @@
 - database view
 - logs
 - index rebuild
+- basic security hardening
 
-## Какие ограничения есть?
+## What are the limitations?
 
-- часть custom/model research paths остаётся исследовательской;
-- live webcam — near real-time, а не тяжёлый промышленный видеострим;
-- quality разных custom веток требует дальнейшей валидации.
+- part of the custom branch is still research-oriented;
+- live webcam is near real-time, not a heavy industrial stream;
+- production deployment would still need HTTPS, rate limiting and mature secret management.

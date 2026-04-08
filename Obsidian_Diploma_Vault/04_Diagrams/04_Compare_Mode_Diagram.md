@@ -1,6 +1,6 @@
 # Compare Mode Diagram
 
-Связано с:
+Related notes:
 
 - [[01_Project/03_Backend]]
 - [[01_Project/04_Desktop]]
@@ -19,18 +19,18 @@ sequenceDiagram
     D->>API: POST /v1/search/compare
     par Pretrained
         API->>P1: detect + embed + search
-        P1-->>API: matches + latency
+        P1-->>API: per-face matches + latency
     and Custom
         API->>P2: detect + embed + search
-        P2-->>API: matches + latency
+        P2-->>API: per-face matches + latency
     end
-    API-->>D: comparisons[]
-    D-->>U: compare results, score and latency
+    API-->>D: comparisons[] + detected faces
+    D-->>U: side-by-side results by score and latency
 ```
 
-## Зачем нужен этот режим
+## Why this mode exists
 
-- сравнить latency;
-- сравнить поведение pipeline;
-- показать baseline vs comparative branch;
-- использовать режим как benchmark and demo tool.
+- compare latency;
+- compare pipeline behavior on the same input;
+- show baseline vs comparative branch;
+- use the same UI mode as a benchmark and demo tool.

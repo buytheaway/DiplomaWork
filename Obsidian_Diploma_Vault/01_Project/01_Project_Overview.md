@@ -1,41 +1,46 @@
 # Project Overview
 
-## Что это за проект
+## What this project is
 
-DiplomaWork — это операторская система для быстрого поиска лиц в биометрической базе данных.
+DiplomaWork is an operator-oriented biometric face search system.
+It combines a FastAPI backend, a PySide6 desktop client, FAISS vector search and a storage layer for metadata and embeddings.
 
-Практический сценарий:
+## Practical workflow
 
-1. оператор загружает изображение или использует вебкамеру;
-2. backend находит лицо или несколько лиц;
-3. система извлекает embedding;
-4. FAISS ищет ближайшие совпадения;
-5. desktop показывает summary, список кандидатов и статус решения.
+1. The operator uploads an image or uses the webcam.
+2. The backend detects one or more faces.
+3. The system computes embeddings.
+4. FAISS searches the nearest vectors.
+5. The desktop shows summary, candidates and decision status.
 
-## Главная идея
+## Main idea
 
-Проект специально разделяет:
+The project deliberately separates:
 
-- извлечение embedding;
-- быстрый nearest-neighbor поиск;
-- UI для оператора;
-- хранение metadata и embeddings.
+- embedding extraction;
+- ANN retrieval;
+- operator UI;
+- metadata and embedding storage;
+- runtime security and audit.
 
-Из-за этого система не завязана на одну конкретную модель.
+Because of that, the system is not tied to one model implementation or one interface.
 
-## Основные возможности
+## Main capabilities
 
-- поиск по изображению;
-- регистрация человека;
+- image search;
+- person enroll;
 - multi-face search;
 - strict single-face enroll;
 - compare mode;
 - live webcam mode;
-- просмотр базы;
-- просмотр логов и состояния индекса;
-- rebuild индекса;
-- исследовательская training-ветка.
+- database view;
+- logs and index maintenance;
+- per-pipeline FAISS index management;
+- encrypted embedding storage;
+- encrypted index snapshots;
+- audit logging and retention.
 
-## Основной тезис для предзащиты
+## Main defense point
 
-Это не просто нейросеть и не один ноутбук со скриптом. Это MVP-система с backend, desktop-интерфейсом, индексом, хранилищем, режимами поиска и сценариями эксплуатации.
+This is not just a model and not just a script.
+It is a working MVP system with backend, desktop client, index layer, storage, operator workflows and a basic security layer.

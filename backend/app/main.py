@@ -13,13 +13,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import APIKeyHeader
 from starlette.responses import JSONResponse
 
 from app.api.routes import enroll, health, index, persons, search
 from app.core.config import get_settings
 from app.core.logging import setup_logging
+from app.security.auth import classify_api_key
 from app.services.runtime.pipeline_registry import PipelineRegistry
+from app.services.storage.repositories import AuditLogRepo
 
 
 @asynccontextmanager
@@ -50,6 +51,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             with SessionLocal() as db:
                 loaded = registry.load_latest_snapshots(db)
                 logger.info("Index snapshots loaded: %s", loaded)
+                pruned = AuditLogRepo(db).prune_older_than(settings.audit_retention_days)
+                if pruned:
+                    db.commit()
+                    logger.info("Pruned %d expired audit log entries", pruned)
         except Exception as exc:  # pragma: no cover - exercised in real runtime
             logger.warning("Failed to load index snapshots: %s", exc)
 
@@ -59,10 +64,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     setup_logging(settings.log_level)
+    logger = logging.getLogger(__name__)
 
     random.seed(settings.seed)
 
-    app = FastAPI(title=settings.app_name, lifespan=lifespan)
+    if not settings.testing:
+        missing: list[str] = []
+        if not settings.api_key:
+            missing.append("API_KEY")
+        if not settings.admin_api_key:
+            missing.append("ADMIN_API_KEY")
+        if not settings.data_encryption_key:
+            missing.append("DATA_ENCRYPTION_KEY")
+        if not settings.snapshot_encryption_key:
+            missing.append("SNAPSHOT_ENCRYPTION_KEY")
+        if missing:
+            raise RuntimeError(
+                "Secure backend configuration is incomplete. Missing: "
+                + ", ".join(missing)
+            )
+        if settings.api_key == settings.admin_api_key:
+            raise RuntimeError("API_KEY and ADMIN_API_KEY must be different")
+
+    docs_enabled = not bool(settings.api_key and not settings.testing)
+    app = FastAPI(
+        title=settings.app_name,
+        lifespan=lifespan,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
+    )
 
     origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
     app.add_middleware(
@@ -73,20 +104,20 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    if settings.api_key:
-        _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
+    if settings.api_key and not settings.testing:
         @app.middleware("http")
         async def _check_api_key(request: Request, call_next):
             path = request.url.path
-            if path.endswith("/health") or path.startswith("/docs") or path.startswith("/openapi"):
+            if path.endswith("/health"):
                 return await call_next(request)
             key = request.headers.get("X-API-Key", "")
-            if key != settings.api_key:
+            role = classify_api_key(settings, key)
+            if role is None:
                 return JSONResponse(
                     status_code=401,
                     content={"detail": "Invalid or missing API key"},
                 )
+            request.state.actor_role = role
             return await call_next(request)
 
     app.include_router(health.router, prefix=settings.api_v1_prefix)

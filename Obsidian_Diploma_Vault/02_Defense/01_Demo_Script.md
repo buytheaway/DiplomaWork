@@ -1,47 +1,51 @@
 # Demo Script
 
-## Рекомендуемый порядок показа
+## Recommended order
 
-1. Открыть `Dashboard`
-2. Показать, что backend online
-3. Показать доступные pipeline
-4. Перейти в `Face Search`
-5. Выполнить обычный `Search`
-6. Показать `Enroll` с одним лицом
-7. Показать `Compare`
-8. Перейти в `Database`
-9. Показать `Logs`
-10. Если всё стабильно, показать webcam mode
+1. Open `Dashboard`
+2. Show that backend is online
+3. Show available pipelines
+4. Open `Face Search`
+5. Run a normal `Search`
+6. Show `Enroll` with a single-face image
+7. Show `Compare`
+8. Open `Database`
+9. Open `Logs`
+10. If stable, show live webcam mode
 
-## Что говорить во время демо
+## What to say during the demo
 
 ### Dashboard
 
-“Здесь оператор видит, что backend работает, какие pipeline доступны и готова ли система к поиску.”
+"Here the operator sees backend health, available pipelines and whether the system is ready for work."
 
 ### Search
 
-“На вход подаётся изображение, backend извлекает embedding и через FAISS ищет ближайшие совпадения в биометрической базе.”
+"The backend receives an image, extracts embeddings and uses FAISS to search the biometric gallery."
 
 ### Enroll
 
-“Для регистрации используется строгая политика одного лица, чтобы база не загрязнялась.”
+"Enroll is intentionally strict: exactly one face is required so the gallery stays clean."
 
 ### Compare
 
-“Здесь можно сравнить два pipeline на одном и том же изображении и посмотреть различие по score и latency.”
+"Here we compare two pipelines on the same input and inspect latency and result quality side by side."
 
 ### Database
 
-“Здесь отображаются зарегистрированные записи и metadata по ним.”
+"Here we see registered records and metadata. Delete actions are admin-only."
 
 ### Logs
 
-“Этот экран нужен для сопровождения и проверки состояния индекса и backend.”
+"This screen is used for operational maintenance: backend state, index state and rebuild actions."
 
-## Если времени мало
+### Live webcam
 
-Показывать в таком порядке:
+"The preview stays local. The desktop sends selected frames to the backend and can process multiple faces in one frame."
+
+## If time is short
+
+Show in this order:
 
 1. Dashboard
 2. Search

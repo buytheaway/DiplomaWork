@@ -1,12 +1,12 @@
 # Data and Models
 
-## Что используется в проекте
+## What exists in the project
 
-В проекте есть несколько модельных и датасетных направлений.
+The project includes several model and dataset directions.
 
-## Runtime pipeline
+## Runtime pipelines
 
-Логически в системе есть:
+The runtime logic exposes:
 
 - `pretrained`
 - `custom`
@@ -14,42 +14,45 @@
 
 ### Pretrained
 
-Baseline используется как стабильный эталон для сравнения.
+The baseline pipeline is the stable operational reference.
 
 ### Custom
 
-Custom branch используется как comparative / research направление.
+The custom branch is the comparative and research branch.
 
 ### Compare
 
-Позволяет на одном и том же изображении сравнить поведение двух pipeline.
+Compare runs both pipelines on the same input.
 
 ## Training subsystem
 
-Отдельная training-ветка нужна для:
+The separate `training/` branch is used for:
 
-- подготовки датасетов;
-- обучения собственной модели;
+- dataset preparation;
+- custom model training;
 - evaluation;
-- export и benchmark.
+- export and benchmarking.
 
-## deploy/model_bundle
+## `deploy/model_bundle`
 
-`deploy/model_bundle` — это внешний bundle артефактов.
+`deploy/model_bundle` is a local external artifact bundle.
 
-Там есть:
+Typical contents:
 
 - `train.csv`
 - `faiss.index`
 - `meta.json`
 - `best.pt`
 
-Его удобно описывать как external comparative bundle, а не как единственный runtime системы.
+Important note:
 
-## Что говорить аккуратно
+- treat it as an external local artifact, not as the trusted runtime source of truth;
+- do not keep real gallery and index artifacts in GitHub if they may expose biometric data or proprietary weights.
 
-Безопасная формулировка:
+## Safe wording
 
-- baseline pipeline стабилен и используется как operational reference;
-- custom branch существует для comparative и research задач;
-- архитектура поддерживает несколько источников embeddings и несколько runtime path.
+Safe defense wording:
+
+- the baseline pipeline is stable and used as the operational reference;
+- the custom branch exists for comparative and research tasks;
+- the architecture supports multiple embedding sources and multiple runtime paths.

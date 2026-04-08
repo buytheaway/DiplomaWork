@@ -43,6 +43,7 @@ backend/data/index/*
 *.faiss
 *.map.json
 model_bundle/
+deploy/model_bundle/
 desktop_stdout.log
 desktop_stderr.log
 benchmarks/

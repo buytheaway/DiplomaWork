@@ -1,18 +1,18 @@
 # Desktop
 
-Связанные схемы:
+Related diagrams:
 
 - [[04_Diagrams/01_System_Architecture_Diagram]]
 - [[04_Diagrams/04_Compare_Mode_Diagram]]
 - [[04_Diagrams/05_Live_Webcam_Diagram]]
 
-## Технология
+## Technology
 
-Desktop-клиент реализован на PySide6.
+The desktop client is built with PySide6.
 
-Он нужен для того, чтобы показать, что система — это не просто набор API endpoints, а операторский инструмент.
+It demonstrates that the project is a real operator tool, not only a set of API endpoints.
 
-## Основные страницы
+## Main pages
 
 - `Dashboard`
 - `Face Search`
@@ -21,34 +21,34 @@ Desktop-клиент реализован на PySide6.
 
 ## Dashboard
 
-Dashboard показывает:
+Dashboard shows:
 
-- состояние backend;
-- доступные pipeline;
+- backend status;
+- available pipelines;
 - summary metrics;
 - recent activity.
 
-Это стартовая страница оператора.
+It is the operator landing page.
 
 ## Face Search
 
-Это главный рабочий экран.
+This is the main working screen.
 
 Workflow:
 
-1. выбрать изображение или запустить камеру;
-2. выбрать режим;
-3. запустить действие;
-4. получить result summary;
-5. посмотреть список совпадений.
+1. choose an image or start the camera;
+2. choose a mode;
+3. run the action;
+4. inspect result summary;
+5. inspect matches and per-face overlays.
 
-Поддерживаемые режимы:
+Modes:
 
 - `Search`
 - `Enroll`
 - `Compare`
 
-Также есть:
+The page also contains:
 
 - image preview;
 - matches table;
@@ -56,23 +56,30 @@ Workflow:
 - advanced options;
 - technical details.
 
+Live webcam mode keeps preview local and sends selected frames to the backend.
+It supports multi-face search and compare flows.
+
 ## Database
 
-Database page показывает записи людей и их детали.
+Database shows person records and details.
 
-Используется для:
+It is used for:
 
-- просмотра person records;
-- удаления записей;
-- проверки содержимого базы;
-- визуального контроля результата enroll/import.
+- viewing registered records;
+- deleting records;
+- checking gallery contents;
+- verifying enroll/import results.
+
+Delete actions use the admin key path.
 
 ## Logs
 
-Logs page нужен для:
+Logs is the operator maintenance screen.
 
-- просмотра состояния backend;
-- просмотра событий;
-- проверки index tools;
-- rebuild индекса;
-- maintenance сценариев.
+It is used for:
+
+- backend status;
+- activity and audit-oriented visibility;
+- index tools;
+- rebuild actions;
+- general maintenance.

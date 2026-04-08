@@ -9,6 +9,7 @@ Responsibilities:
 from __future__ import annotations
 
 import logging
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ import numpy as np
 from sqlalchemy.orm import Session
 
 from app.core.config import BASE_DIR, Settings
+from app.security.crypto import decrypt_embedding_payload, decrypt_snapshot_payload, encrypt_snapshot_payload
 from app.services.index.faiss_index import FaissIndex
 from app.services.storage.repositories import EmbeddingRepo, IndexSnapshotRepo
 
@@ -78,6 +80,28 @@ class IndexManager:
             seed=self.settings.seed,
         )
 
+    def _map_path_for(self, path: Path) -> Path:
+        return path.with_suffix(path.suffix + ".map.json")
+
+    def _save_index_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw_path = Path(tmpdir) / self.index_path.name
+            raw_map_path = self._map_path_for(raw_path)
+            target_map_path = self._map_path_for(self.index_path)
+
+            self._index.save(str(raw_path))
+            self.index_path.write_bytes(encrypt_snapshot_payload(raw_path.read_bytes()))
+            target_map_path.write_bytes(encrypt_snapshot_payload(raw_map_path.read_bytes()))
+
+    def _load_index_files(self, path: Path) -> None:
+        map_path = self._map_path_for(path)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw_path = Path(tmpdir) / path.name
+            raw_map_path = self._map_path_for(raw_path)
+            raw_path.write_bytes(decrypt_snapshot_payload(path.read_bytes()))
+            raw_map_path.write_bytes(decrypt_snapshot_payload(map_path.read_bytes()))
+            self._index.load(str(raw_path))
+
     # ── snapshot management ──────────────────────────────────────────────
 
     def load_latest_snapshot(self, db: Session) -> bool:
@@ -85,7 +109,7 @@ class IndexManager:
         snapshot = repo.get_latest_for_path(str(self.index_path))
         if snapshot and Path(snapshot.path).exists():
             self._index = self._create_index(snapshot.index_type, snapshot.params)
-            self._index.load(snapshot.path)
+            self._load_index_files(Path(snapshot.path))
             self._index_type = snapshot.index_type
             self._params = snapshot.params
             self.last_snapshot_id = str(snapshot.id)
@@ -101,7 +125,7 @@ class IndexManager:
         return False
 
     def save_snapshot(self, db: Session) -> None:
-        self._index.save(str(self.index_path))
+        self._save_index_files()
         repo = IndexSnapshotRepo(db)
         snapshot = repo.create(
             index_type=self._index_type,
@@ -129,13 +153,21 @@ class IndexManager:
         self._params = params
 
         if embeddings:
-            vectors = np.vstack([np.frombuffer(e.vector, dtype=np.float32) for e in embeddings])
+            vectors = np.vstack(
+                [
+                    np.frombuffer(decrypt_embedding_payload(e.vector), dtype=np.float32)
+                    for e in embeddings
+                ]
+            )
             self._index.train(vectors)
             for embedding, vector in zip(embeddings, vectors):
                 self._index.add_embedding(str(embedding.id), vector)
 
         self.save_snapshot(db)
         return self.stats()
+
+    def rebuild_current(self, db: Session) -> dict[str, Any]:
+        return self.rebuild(db, self._index_type, dict(self._params))
 
     def stats(self) -> dict[str, Any]:
         stats = self._index.stats()

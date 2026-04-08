@@ -1,8 +1,8 @@
 # Diagrams Index
 
-Это индекс заметок с Mermaid-диаграммами для проекта.
+This note indexes the Mermaid diagrams used for architecture and workflow explanations.
 
-## Диаграммы
+## Diagrams
 
 - [[04_Diagrams/01_System_Architecture_Diagram]]
 - [[04_Diagrams/02_Search_Flow_Diagram]]
@@ -10,13 +10,13 @@
 - [[04_Diagrams/04_Compare_Mode_Diagram]]
 - [[04_Diagrams/05_Live_Webcam_Diagram]]
 
-## Как использовать
+## How to use
 
-- открывай заметку в Reading view, чтобы Obsidian отрисовал Mermaid;
-- в graph view будут видны сами заметки-диаграммы;
-- связи строятся через `[[wiki-links]]`, а не из линий Mermaid.
+- open a note in Reading view so Obsidian renders Mermaid;
+- graph view shows note-to-note links, not Mermaid edges;
+- use these notes as the source diagrams for defense explanations.
 
-Связано с:
+Related notes:
 
 - [[01_Project/02_Architecture]]
 - [[01_Project/03_Backend]]

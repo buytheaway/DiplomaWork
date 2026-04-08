@@ -6,6 +6,7 @@ session and wires up the full FastAPI app with ``DummyEmbeddingExtractor``.
 
 from __future__ import annotations
 
+from app.core.config import settings
 from app.services.embeddings.interface import DummyEmbeddingExtractor, FaceEmbedding
 from app.services.runtime.pipeline_registry import PipelineRuntime
 
@@ -216,6 +217,26 @@ def test_search_empty_file_returns_400(client):
     assert resp.status_code == 400
 
 
+def test_search_rejects_oversized_upload(client, monkeypatch):
+    monkeypatch.setattr(settings, "max_upload_bytes", 4)
+    resp = client.post(
+        "/v1/search",
+        files={"file": ("big.jpg", b"12345", "image/jpeg")},
+    )
+    assert resp.status_code == 400
+    assert "too large" in resp.json()["detail"].lower()
+
+
+def test_enroll_rejects_unsupported_content_type(client):
+    resp = client.post(
+        "/v1/enroll",
+        files={"file": ("note.txt", b"not-an-image", "text/plain")},
+        data={"label": "WrongType"},
+    )
+    assert resp.status_code == 400
+    assert "unsupported file type" in resp.json()["detail"].lower()
+
+
 # ── persons ──────────────────────────────────────────────────────────────────
 
 
@@ -277,6 +298,26 @@ def test_delete_person(client):
     get_resp = client.get(f"/v1/persons/{person_id}")
     assert get_resp.status_code == 200
     assert get_resp.json()["status"] == "deleted"
+
+
+def test_delete_person_removes_results_from_index(client):
+    enroll_resp = client.post(
+        "/v1/enroll",
+        files={"file": ("d2.jpg", b"\x89PNG_delete_index", "image/jpeg")},
+        data={"label": "DeleteIndex"},
+    )
+    person_id = enroll_resp.json()["person_id"]
+
+    delete_resp = client.delete(f"/v1/persons/{person_id}")
+    assert delete_resp.status_code == 200
+
+    search_resp = client.post(
+        "/v1/search",
+        params={"k": 3},
+        files={"file": ("q.jpg", b"\x89PNG_query_after_delete", "image/jpeg")},
+    )
+    assert search_resp.status_code == 200
+    assert search_resp.json()["results"] == []
 
 
 def test_delete_person_not_found(client):

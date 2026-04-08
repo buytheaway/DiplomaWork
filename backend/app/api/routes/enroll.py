@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_pipeline_registry
@@ -16,12 +16,16 @@ from app.services.embeddings.interface import (
     NoFaceDetectedError,
 )
 from app.services.runtime.pipeline_registry import PipelineRegistry
+from app.services.storage.audit import record_audit_event
 from app.services.storage.repositories import EmbeddingRepo, PersonRepo
+from app.services.storage.uploads import UploadValidationError, allowed_content_types, read_image_upload
 
 router = APIRouter()
 
 
 def _raise_face_error(exc: Exception) -> None:
+    if isinstance(exc, UploadValidationError):
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if isinstance(exc, InvalidImageError):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if isinstance(exc, (NoFaceDetectedError, MultipleFacesDetectedError)):
@@ -31,13 +35,21 @@ def _raise_face_error(exc: Exception) -> None:
 
 @router.post("/enroll", response_model=EnrollResponse)
 async def enroll(
+    request: Request,
     file: UploadFile = File(...),
     label: str | None = Form(None),
     pipeline: Literal["pretrained", "custom", "both"] | None = Form(None),
     db: Session = Depends(get_db),
     registry: PipelineRegistry = Depends(get_pipeline_registry),
 ) -> EnrollResponse:
-    image_bytes = await file.read()
+    try:
+        image_bytes = await read_image_upload(
+            file,
+            max_bytes=settings.max_upload_bytes,
+            allowed_types=allowed_content_types(settings.allowed_image_content_types),
+        )
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         runtimes = registry.resolve_enroll(pipeline)
     except KeyError as exc:
@@ -102,7 +114,7 @@ async def enroll(
     ]
     first = enrollments[0]
 
-    return EnrollResponse(
+    response = EnrollResponse(
         person_id=str(person.id),
         embedding_id=first.embedding_id,
         faces_detected=1,
@@ -112,3 +124,15 @@ async def enroll(
         available_pipelines=registry.available_pipelines(),
         enrollments=enrollments,
     )
+    record_audit_event(
+        db,
+        request,
+        event_type="enroll",
+        status_code=200,
+        details={
+            "person_id": str(person.id),
+            "pipelines": [item.pipeline for item in enrollments],
+            "faces_detected": 1,
+        },
+    )
+    return response

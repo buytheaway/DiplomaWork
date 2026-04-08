@@ -1,10 +1,19 @@
 # API and Endpoints
 
+## Security
+
+Operational routes require `X-API-Key`.
+
+- `API_KEY` is used for normal operator actions;
+- `ADMIN_API_KEY` is used for admin actions;
+- `GET /v1/health` is the public health probe;
+- when auth is enabled, API docs are disabled.
+
 ## Health
 
 `GET /v1/health`
 
-Возвращает:
+Returns:
 
 - `status`
 - `default_pipeline`
@@ -18,25 +27,27 @@
 
 `POST /v1/enroll`
 
-Назначение:
+Purpose:
 
-- зарегистрировать одного человека по изображению
+- register one person from one image
 
-Особенности:
+Behavior:
 
-- одно лицо обязательно;
-- при нескольких лицах запрос отклоняется;
-- сохраняется person + embedding.
+- exactly one face is required;
+- if multiple faces are present, the request is rejected;
+- the backend creates a new person record;
+- the embedding is stored encrypted;
+- the selected pipeline index is updated.
 
 ## Search
 
 `POST /v1/search`
 
-Назначение:
+Purpose:
 
-- поиск по одному pipeline
+- search in one selected pipeline
 
-Возвращает:
+Returns:
 
 - top-k matches;
 - `score`;
@@ -45,36 +56,44 @@
 - `latency_ms`;
 - `detected_faces`.
 
+This route supports multiple faces in one image.
+
 ## Compare
 
 `POST /v1/search/compare`
 
-Назначение:
+Purpose:
 
-- сравнение `pretrained` и `custom` на одном входе
+- compare `pretrained` and `custom` on the same input
 
-Полезно для:
+Useful for:
 
 - benchmark;
-- демонстрации различий pipeline;
-- анализа latency и confidence.
+- pipeline comparison;
+- latency and confidence analysis.
 
 ## Persons
 
 `GET /v1/persons`
 
-Назначение:
+- list registered person records.
 
-- просмотр зарегистрированных записей.
+`GET /v1/persons/{person_id}`
+
+- show one record and its embeddings.
+
+`DELETE /v1/persons/{person_id}`
+
+- admin-only;
+- soft-deletes the person and rebuilds affected indexes.
 
 ## Index
 
 `GET /v1/index/stats`
 
-- статистика индекса;
-- pipeline-aware operational info.
+- pipeline-aware index statistics.
 
 `POST /v1/index/rebuild`
 
-- пересборка индекса;
-- используется в maintenance сценариях.
+- admin-only;
+- rebuilds the selected pipeline index.

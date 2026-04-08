@@ -1,6 +1,6 @@
 # Live Webcam Diagram
 
-Связано с:
+Related notes:
 
 - [[01_Project/04_Desktop]]
 - [[01_Project/03_Backend]]
@@ -8,16 +8,21 @@
 
 ```mermaid
 flowchart TD
-    A[Desktop opens local camera] --> B[Preview frame is shown locally]
-    B --> C[Timer selects frame]
-    C --> D[Frame sent to backend]
-    D --> E[Face detection and embedding extraction]
-    E --> F[FAISS search]
-    F --> G[Backend returns detected faces and matches]
-    G --> H[Desktop draws overlays]
-    H --> I[Operator sees labels, scores and status]
+    A[Desktop opens local camera] --> B[Preview stays local]
+    B --> C[Timer picks a frame]
+    C --> D{Current mode}
+    D -- Search --> E[Send frame to /v1/search]
+    D -- Compare --> F[Send frame to /v1/search/compare]
+    E --> G[Backend detects one or more faces]
+    F --> G
+    G --> H[Backend computes per-face embeddings and searches FAISS]
+    H --> I[Backend returns detected_faces and top matches]
+    I --> J[Desktop groups faces and draws overlays]
+    J --> K[Operator sees labels, scores and unknown faces]
 ```
 
-## Важная формулировка
+## Important wording
 
-Это near real-time webcam workflow, а не тяжёлый постоянный видеострим на сервер. Preview живёт локально, а backend получает выбранные кадры по таймеру.
+This is a near real-time webcam workflow, not full video streaming to the server.
+The preview stays local in the desktop app.
+The backend receives selected frames at intervals and can process multiple faces in one frame.

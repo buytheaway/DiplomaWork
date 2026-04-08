@@ -1,6 +1,6 @@
 # System Architecture Diagram
 
-Связано с:
+Related notes:
 
 - [[01_Project/02_Architecture]]
 - [[01_Project/03_Backend]]
@@ -12,6 +12,7 @@ flowchart LR
     U[Operator] --> D[PySide6 Desktop]
     D --> API[FastAPI Backend]
 
+    API --> AUTH[API key / Admin key]
     API --> REG[Pipeline Registry]
     REG --> PRE[Pretrained pipeline]
     REG --> CUS[Custom pipeline]
@@ -23,18 +24,21 @@ flowchart LR
     EXT2 --> IDX2[FAISS index: custom]
 
     API --> DB[(PostgreSQL / SQLite)]
+    API --> AUD[Audit log]
+    API --> SNAP[Encrypted snapshot files]
+
+    DB --> META[Person metadata + encrypted embeddings]
     IDX1 --> API
     IDX2 --> API
-    DB --> API
-
     API --> RESP[Search / Enroll / Compare response]
     RESP --> D
 ```
 
-## Что показывает схема
+## What this diagram shows
 
-- desktop и backend разделены;
-- runtime поддерживает несколько pipeline;
-- для каждого pipeline есть свой индекс;
-- БД хранит metadata и embeddings;
-- поиск идёт через FAISS, а не через SQL как vector engine.
+- desktop and backend are separated;
+- the runtime supports multiple pipelines;
+- each pipeline has its own index;
+- the database stores metadata and encrypted embeddings;
+- FAISS does vector search, not SQL;
+- audit logging and encrypted snapshots are part of the runtime, not an external afterthought.

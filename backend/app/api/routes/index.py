@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, get_pipeline_registry
+from app.api.deps import get_db, get_pipeline_registry, require_admin
 from app.api.schemas.index import IndexStatsResponse, RebuildIndexRequest
 from app.services.runtime.pipeline_registry import PipelineRegistry
+from app.services.storage.audit import record_audit_event
 
 router = APIRouter()
 
@@ -32,9 +33,11 @@ def index_stats(
 
 @router.post("/index/rebuild", response_model=IndexStatsResponse)
 def rebuild_index(
+    request: Request,
     payload: RebuildIndexRequest,
     db: Session = Depends(get_db),
     registry: PipelineRegistry = Depends(get_pipeline_registry),
+    _admin: str = Depends(require_admin),
 ) -> IndexStatsResponse:
     try:
         runtime = registry.resolve_search(payload.pipeline)
@@ -45,4 +48,15 @@ def rebuild_index(
     stats["embedding_backend"] = runtime.backend
     stats["pipeline"] = runtime.key
     stats["available_pipelines"] = registry.available_pipelines()
+    record_audit_event(
+        db,
+        request,
+        event_type="rebuild_index",
+        status_code=200,
+        details={
+            "pipeline": runtime.key,
+            "index_type": payload.index_type,
+            "embeddings_count": stats["embeddings_count"],
+        },
+    )
     return IndexStatsResponse(**stats)

@@ -102,7 +102,19 @@ class Settings(BaseSettings):
 
     # ── security / CORS ──────────────────────────────────────────────────
     api_key: str = Field("", alias="API_KEY")
-    cors_origins: str = Field("*", alias="CORS_ORIGINS")
+    admin_api_key: str = Field("", alias="ADMIN_API_KEY")
+    cors_origins: str = Field(
+        "http://127.0.0.1:8000,http://localhost:8000",
+        alias="CORS_ORIGINS",
+    )
+    max_upload_bytes: int = Field(10 * 1024 * 1024, alias="MAX_UPLOAD_BYTES")
+    allowed_image_content_types: str = Field(
+        "image/jpeg,image/png,image/webp,image/bmp",
+        alias="ALLOWED_IMAGE_CONTENT_TYPES",
+    )
+    data_encryption_key: str = Field("", alias="DATA_ENCRYPTION_KEY")
+    snapshot_encryption_key: str = Field("", alias="SNAPSHOT_ENCRYPTION_KEY")
+    audit_retention_days: int = Field(30, alias="AUDIT_RETENTION_DAYS")
 
     # ── runtime ──────────────────────────────────────────────────────────
     auto_save_index: bool = Field(True, alias="AUTO_SAVE_INDEX")

@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_pipeline_registry
@@ -27,7 +27,9 @@ from app.services.embeddings.interface import (
 )
 from app.services.index.index_manager import IndexMatch
 from app.services.runtime.pipeline_registry import PipelineRegistry
+from app.services.storage.audit import record_audit_event
 from app.services.storage.repositories import EmbeddingRepo
+from app.services.storage.uploads import UploadValidationError, allowed_content_types, read_image_upload
 
 router = APIRouter()
 
@@ -58,6 +60,8 @@ class RawSearchOutcome:
 
 
 def _map_face_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, UploadValidationError):
+        return HTTPException(status_code=400, detail=str(exc))
     if isinstance(exc, InvalidImageError):
         return HTTPException(status_code=400, detail=str(exc))
     if isinstance(exc, (NoFaceDetectedError, MultipleFacesDetectedError)):
@@ -203,13 +207,21 @@ def _response_from_outcome(
 
 @router.post("/search", response_model=SearchResponse)
 async def search(
+    request: Request,
     file: UploadFile = File(...),
     k: int = Query(5, ge=1, le=100),
     pipeline: Literal["pretrained", "custom"] | None = Query(None),
     db: Session = Depends(get_db),
     registry: PipelineRegistry = Depends(get_pipeline_registry),
 ) -> SearchResponse:
-    image_bytes = await file.read()
+    try:
+        image_bytes = await read_image_upload(
+            file,
+            max_bytes=settings.max_upload_bytes,
+            allowed_types=allowed_content_types(settings.allowed_image_content_types),
+        )
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         runtime = registry.resolve_search(pipeline)
     except KeyError as exc:
@@ -220,17 +232,39 @@ async def search(
     except Exception as exc:  # noqa: BLE001
         raise _map_face_error(exc) from exc
 
-    return _response_from_outcome(db, outcome, k, registry.available_pipelines())
+    response = _response_from_outcome(db, outcome, k, registry.available_pipelines())
+    record_audit_event(
+        db,
+        request,
+        event_type="search",
+        status_code=200,
+        details={
+            "pipeline": outcome.pipeline,
+            "faces_detected": response.faces_detected,
+            "matched_faces": response.matched_faces,
+            "decision": response.decision,
+            "k": k,
+        },
+    )
+    return response
 
 
 @router.post("/search/compare", response_model=CompareSearchResponse)
 async def search_compare(
+    request: Request,
     file: UploadFile = File(...),
     k: int = Query(5, ge=1, le=100),
     db: Session = Depends(get_db),
     registry: PipelineRegistry = Depends(get_pipeline_registry),
 ) -> CompareSearchResponse:
-    image_bytes = await file.read()
+    try:
+        image_bytes = await read_image_upload(
+            file,
+            max_bytes=settings.max_upload_bytes,
+            allowed_types=allowed_content_types(settings.allowed_image_content_types),
+        )
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     available = registry.available_pipelines()
     if "pretrained" not in available or "custom" not in available:
         raise HTTPException(
@@ -296,9 +330,22 @@ async def search_compare(
         )
 
     fastest = min(successful, key=lambda item: item.latency_ms).pipeline if successful else None
-    return CompareSearchResponse(
+    response = CompareSearchResponse(
         k=k,
         comparisons=comparisons,
         available_pipelines=available,
         fastest_pipeline=fastest,
     )
+    record_audit_event(
+        db,
+        request,
+        event_type="search_compare",
+        status_code=200,
+        details={
+            "pipelines": available,
+            "successful_pipelines": [item.pipeline for item in successful],
+            "fastest_pipeline": fastest,
+            "k": k,
+        },
+    )
+    return response

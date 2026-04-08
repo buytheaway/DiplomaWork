@@ -1,68 +1,79 @@
 # Backend
 
-Связанные схемы:
+Related diagrams:
 
 - [[04_Diagrams/01_System_Architecture_Diagram]]
 - [[04_Diagrams/02_Search_Flow_Diagram]]
 - [[04_Diagrams/03_Enroll_Flow_Diagram]]
 - [[04_Diagrams/04_Compare_Mode_Diagram]]
 
-## Технология
+## Technology
 
-Backend построен на FastAPI.
+The backend is implemented with FastAPI.
 
-Точка входа:
+Entry point:
 
 - `backend/app/main.py`
 
-## Что делает backend
+## What the backend does
 
-- поднимает runtime pipeline;
-- инициализирует индексы;
-- обрабатывает enroll и search запросы;
-- отдаёт health/status;
-- работает с person records;
-- отдаёт статистику индекса;
-- умеет rebuild индекса.
+- initializes runtime pipelines;
+- initializes and loads FAISS indexes;
+- processes enroll and search requests;
+- exposes health and index status;
+- manages person records;
+- rebuilds indexes;
+- enforces API-key based access;
+- writes audit logs.
 
-## Основные маршруты
+## Main routes
 
 - `GET /v1/health`
 - `POST /v1/enroll`
 - `POST /v1/search`
 - `POST /v1/search/compare`
 - `GET /v1/persons`
+- `DELETE /v1/persons/{person_id}`
 - `GET /v1/index/stats`
 - `POST /v1/index/rebuild`
 
 ## PipelineRegistry
 
-Registry поднимает и держит доступные pipeline:
+The registry manages the currently available pipelines:
 
 - `pretrained`
 - `custom`
 
-Также он:
+It also:
 
-- знает default pipeline;
-- умеет отдавать available pipelines;
-- загружает index snapshots;
-- создаёт runtime для каждого pipeline.
+- knows the default pipeline;
+- reports available pipelines;
+- loads the latest snapshots;
+- creates runtime objects per pipeline.
 
-## Важные правила обработки лица
+## Face-processing rules
 
-- `Enroll` допускает только одно лицо.
-- `Search` допускает несколько лиц.
-- `0 faces` на enroll -> `422`
-- `>1 faces` на enroll -> `422`
+- `Enroll` accepts exactly one face.
+- `Search` accepts multiple faces.
+- `0 faces` on enroll -> `422`
+- `>1 faces` on enroll -> `422`
 - invalid image -> `400`
 
-## Что backend хранит
+## Storage and security
 
-По умолчанию backend не хранит сырые изображения как основной operational storage.
+The backend does not use raw images as its default operational storage.
 
-Хранятся:
+Stored entities:
 
 - `person`
 - `embedding`
 - `index snapshot`
+- `audit log`
+
+Security behavior:
+
+- `API_KEY` protects normal routes;
+- `ADMIN_API_KEY` protects admin actions such as delete and rebuild;
+- embeddings are encrypted before writing to DB;
+- FAISS snapshot files are encrypted on disk;
+- audit entries are retained with a configurable retention period.

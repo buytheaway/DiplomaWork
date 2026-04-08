@@ -1,6 +1,6 @@
 # Search Flow Diagram
 
-Связано с:
+Related notes:
 
 - [[01_Project/02_Architecture]]
 - [[01_Project/03_Backend]]
@@ -9,17 +9,18 @@
 
 ```mermaid
 flowchart TD
-    A[User selects image] --> B[Desktop sends request to /v1/search]
-    B --> C[Backend validates image]
+    A[Operator selects image or live frame] --> B[Desktop sends POST /v1/search]
+    B --> C[Backend validates API key and upload]
     C --> D[Extractor detects one or more faces]
-    D --> E[Embedding is computed for each face]
-    E --> F[FAISS searches top-k nearest vectors]
-    F --> G[Backend loads metadata from DB]
-    G --> H[Builds SearchResponse]
-    H --> I[Desktop shows summary]
-    I --> J[Desktop shows top matches and detected faces]
+    D --> E[Compute one embedding per detected face]
+    E --> F[FAISS searches top-k nearest vectors for each face]
+    F --> G[Backend loads person metadata from DB]
+    G --> H[Apply threshold and build per-face response]
+    H --> I[Write audit log]
+    I --> J[Desktop shows summary, detected faces and top matches]
 ```
 
-## Ключевая мысль
+## Key point
 
-Search — это workflow из нескольких этапов: validation, detection, embedding extraction, ANN retrieval, metadata hydration и UI presentation.
+`Search` is a multi-step workflow: validation, multi-face detection, embedding extraction, ANN retrieval,
+metadata hydration, decision logic, audit logging and UI presentation.

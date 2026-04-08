@@ -59,3 +59,15 @@ class IndexSnapshot(Base):
     path: Mapped[str] = mapped_column(Text, nullable=False)
     embeddings_count: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    actor_role: Mapped[str] = mapped_column(String(20), nullable=False)
+    route: Mapped[str] = mapped_column(Text, nullable=False)
+    status_code: Mapped[int] = mapped_column(nullable=False)
+    details: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)

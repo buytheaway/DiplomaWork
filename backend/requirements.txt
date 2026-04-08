@@ -8,6 +8,7 @@ pydantic-settings>=2.1
 faiss-cpu
 numpy
 python-multipart
+cryptography
 
 # ── database drivers (pick one: postgres for Docker, sqlite built-in) ─
 psycopg2-binary

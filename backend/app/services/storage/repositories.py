@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.db.models import Embedding, IndexSnapshot, Person
+from app.db.models import AuditLog, Embedding, IndexSnapshot, Person
+from app.security.crypto import encrypt_embedding_payload
 
 
 class PersonRepo:
@@ -54,7 +56,12 @@ class EmbeddingRepo:
         self.db = db
 
     def create(self, person_id: str, model: str, dim: int, vector: bytes) -> Embedding:
-        embedding = Embedding(person_id=person_id, model=model, dim=dim, vector=vector)
+        embedding = Embedding(
+            person_id=person_id,
+            model=model,
+            dim=dim,
+            vector=encrypt_embedding_payload(vector),
+        )
         self.db.add(embedding)
         return embedding
 
@@ -111,3 +118,33 @@ class IndexSnapshotRepo:
             .order_by(IndexSnapshot.created_at.desc())
         )
         return self.db.execute(stmt).scalars().first()
+
+
+class AuditLogRepo:
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def create(
+        self,
+        *,
+        event_type: str,
+        actor_role: str,
+        route: str,
+        status_code: int,
+        details: dict,
+    ) -> AuditLog:
+        entry = AuditLog(
+            event_type=event_type,
+            actor_role=actor_role,
+            route=route,
+            status_code=status_code,
+            details=details,
+        )
+        self.db.add(entry)
+        return entry
+
+    def prune_older_than(self, retention_days: int) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        stmt = delete(AuditLog).where(AuditLog.created_at < cutoff)
+        result = self.db.execute(stmt)
+        return int(result.rowcount or 0)

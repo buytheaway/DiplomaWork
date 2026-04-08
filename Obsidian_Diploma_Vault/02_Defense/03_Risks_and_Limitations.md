@@ -1,20 +1,20 @@
 # Risks and Limitations
 
-## Текущие ограничения
+## Current limitations
 
-- Не все custom model paths доведены до production-grade состояния.
-- Live webcam mode работает как near real-time, а не как полный video streaming pipeline.
-- Исследовательская training-ветка и runtime-ветка не всегда полностью совпадают по operational maturity.
-- Качество comparative branch требует отдельной валидации и benchmark.
+- Not every custom model path is production-ready.
+- Live webcam mode is near real-time, not full video streaming.
+- Research training paths and stable runtime paths are not the same thing.
+- Comparative branch quality still needs separate validation and benchmarking.
+- Security is stronger than before, but still not a full enterprise deployment package.
 
-## Как это правильно озвучивать
+## What to say honestly
 
-Не нужно скрывать ограничения. Правильная формулировка:
+"The operational baseline and the system architecture are already implemented and reproducible. Comparative and research branches remain areas for further validation and improvement."
 
-“Рабочий baseline и системная архитектура уже реализованы и воспроизводимы. Часть comparative и research веток находится в исследовательском состоянии и служит для дальнейшего развития проекта.”
+## What not to overclaim
 
-## Что не надо обещать
-
-- не говорить, что все модели уже production-ready;
-- не говорить, что webcam работает как полноценный industrial surveillance stream;
-- не смешивать training experiments и stable runtime в одну и ту же формулировку.
+- do not say every model is already production-ready;
+- do not describe webcam mode as an industrial surveillance stream;
+- do not mix research training experiments with stable operational runtime;
+- do not claim the current security layer replaces proper production network and secret management.

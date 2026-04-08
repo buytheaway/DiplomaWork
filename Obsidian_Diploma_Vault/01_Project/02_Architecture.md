@@ -1,6 +1,6 @@
 # Architecture
 
-Связанные схемы:
+Related diagrams:
 
 - [[04_Diagrams/01_System_Architecture_Diagram]]
 - [[04_Diagrams/02_Search_Flow_Diagram]]
@@ -8,41 +8,44 @@
 - [[04_Diagrams/04_Compare_Mode_Diagram]]
 - [[04_Diagrams/05_Live_Webcam_Diagram]]
 
-## Высокоуровневая схема
+## High-level structure
 
-Система разделена на четыре ключевых уровня:
+The system is split into five major layers:
 
 - desktop client;
 - backend API;
+- pipeline runtime;
 - storage layer;
 - vector search layer.
 
-## Поток данных
+## Data flow
 
-1. Desktop отправляет изображение или кадр камеры в backend.
-2. Backend валидирует файл.
-3. Extractor находит лицо и вычисляет embedding.
-4. Index manager отправляет embedding в FAISS.
-5. FAISS возвращает top-k ближайших совпадений.
-6. Backend дополняет ответ metadata из БД.
-7. Desktop показывает результаты пользователю.
+1. Desktop sends an image or a selected webcam frame to the backend.
+2. Backend validates the request and API key.
+3. The extractor detects faces and computes embeddings.
+4. The index manager searches FAISS.
+5. The backend loads person metadata from the database.
+6. The backend builds a response and writes an audit event.
+7. Desktop shows per-face results to the operator.
 
-## Почему архитектура удобная
+## Why this architecture is useful
 
-- UI не зависит от конкретной модели.
-- API не зависит от конкретной реализации desktop.
-- БД не используется как векторный движок.
-- Index layer можно пересобирать и сравнивать.
-- Можно держать несколько pipeline параллельно.
+- UI is not tied to one model implementation.
+- API is not tied to one desktop implementation.
+- SQL storage is not misused as the vector engine.
+- The index layer can be rebuilt and benchmarked independently.
+- Multiple pipelines can run side by side.
+- Security concerns are explicit: auth, encrypted storage and audit are separate concerns, not hidden inside model code.
 
-## Основные папки проекта
+## Main project directories
 
-- `backend/` — API, runtime, index, storage
-- `desktop/` — операторский интерфейс
-- `training/` — обучение и оценка
-- `deploy/model_bundle/` — внешний bundle
-- `scripts/` — служебные скрипты
+- `backend/` - API, runtime, index and storage logic
+- `desktop/` - operator interface
+- `training/` - research and evaluation
+- `deploy/model_bundle/` - local external artifact, not part of the trusted repo payload
+- `scripts/` - helper scripts
 
-## Что говорить, если спросят "почему не только БД?"
+## Why not use only SQL?
 
-Потому что обычная SQL-БД хорошо хранит записи, но плохо подходит для быстрого поиска ближайших 512-мерных векторов на больших объёмах. Поэтому metadata и embeddings хранятся в БД, а nearest-neighbor поиск вынесен в FAISS.
+Regular SQL storage is good for records and metadata, but poor for fast nearest-neighbor search in 512-dimensional space.
+That is why metadata and encrypted embeddings live in the database, while nearest-neighbor search is delegated to FAISS.
