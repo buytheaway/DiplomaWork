@@ -66,6 +66,7 @@ def main() -> None:
 
     latencies: list[float] = []
     found = 0
+    failed = 0
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -100,6 +101,7 @@ def main() -> None:
                     found += 1
             except Exception:
                 ok = 0
+                failed += 1
                 latency_ms = (time.perf_counter() - start) * 1000
                 match = False
 
@@ -119,6 +121,8 @@ def main() -> None:
     latencies_np = np.array(latencies, dtype=np.float32)
     summary = {
         "samples": len(latencies),
+        "successful_requests": len(latencies) - failed,
+        "failed_requests": failed,
         "k": args.k,
         "recall_at_k": found / len(latencies),
         "latency_p50_ms": float(np.percentile(latencies_np, 50)),
