@@ -120,6 +120,8 @@ def main() -> None:
     total_time = time.perf_counter() - total_start
     latencies_np = np.array(latencies, dtype=np.float32)
     summary = {
+        "available_images": len(images),
+        "requested_samples": args.samples,
         "samples": len(latencies),
         "successful_requests": len(latencies) - failed,
         "failed_requests": failed,
