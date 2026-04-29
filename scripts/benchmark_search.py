@@ -20,6 +20,13 @@ FACE POLICY:
 """
 
 
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
+
+
 def collect_images(dataset_dir: Path) -> list[tuple[Path, str]]:
     images: list[tuple[Path, str]] = []
     for person_dir in sorted(p for p in dataset_dir.iterdir() if p.is_dir()):
@@ -35,8 +42,8 @@ def collect_images(dataset_dir: Path) -> list[tuple[Path, str]]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark search latency and recall")
     parser.add_argument("--dataset", required=True, help="Dataset folder")
-    parser.add_argument("--k", type=int, default=5)
-    parser.add_argument("--samples", type=int, default=100)
+    parser.add_argument("--k", type=positive_int, default=5)
+    parser.add_argument("--samples", type=positive_int, default=100)
     parser.add_argument("--base-url", default="http://localhost:8000")
     parser.add_argument("--output-dir", default="benchmarks")
     parser.add_argument("--seed", type=int, default=42)
