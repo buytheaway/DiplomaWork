@@ -21,7 +21,7 @@ def set_seed(seed: int) -> None:
 
 def load_config(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as handle:
-        return yaml.safe_load(handle)
+        return yaml.safe_load(handle) or {}
 
 
 def ensure_dir(path: str | Path) -> Path:
