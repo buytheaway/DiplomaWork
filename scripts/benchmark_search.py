@@ -20,6 +20,18 @@ FACE POLICY:
 """
 
 
+def collect_images(dataset_dir: Path) -> list[tuple[Path, str]]:
+    images: list[tuple[Path, str]] = []
+    for person_dir in sorted(p for p in dataset_dir.iterdir() if p.is_dir()):
+        label = person_dir.name
+        for img in sorted(
+            (p for p in person_dir.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS),
+            key=lambda p: p.name,
+        ):
+            images.append((img, label))
+    return images
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark search latency and recall")
     parser.add_argument("--dataset", required=True, help="Dataset folder")
@@ -36,14 +48,7 @@ def main() -> None:
     if not dataset_dir.is_dir():
         raise SystemExit(f"Dataset path is not a folder: {dataset_dir}")
 
-    images: list[tuple[Path, str]] = []
-    for person_dir in sorted(p for p in dataset_dir.iterdir() if p.is_dir()):
-        label = person_dir.name
-        for img in sorted(
-            (p for p in person_dir.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS),
-            key=lambda p: p.name,
-        ):
-            images.append((img, label))
+    images = collect_images(dataset_dir)
 
     if not images:
         raise SystemExit("No images found")
