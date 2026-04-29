@@ -20,11 +20,31 @@ FACE POLICY:
 """
 
 
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
+
+
+
+def collect_images(dataset_dir: Path) -> list[tuple[Path, str]]:
+    images: list[tuple[Path, str]] = []
+    for person_dir in sorted(p for p in dataset_dir.iterdir() if p.is_dir()):
+        label = person_dir.name
+        for img in sorted(
+            (p for p in person_dir.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS),
+            key=lambda p: p.name,
+        ):
+            images.append((img, label))
+    return images
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark search latency and recall")
     parser.add_argument("--dataset", required=True, help="Dataset folder")
-    parser.add_argument("--k", type=int, default=5)
-    parser.add_argument("--samples", type=int, default=100)
+    parser.add_argument("--k", type=positive_int, default=5)
+    parser.add_argument("--samples", type=positive_int, default=100)
     parser.add_argument("--base-url", default="http://localhost:8000")
     parser.add_argument("--output-dir", default="benchmarks")
     parser.add_argument("--seed", type=int, default=42)
@@ -36,14 +56,7 @@ def main() -> None:
     if not dataset_dir.is_dir():
         raise SystemExit(f"Dataset path is not a folder: {dataset_dir}")
 
-    images: list[tuple[Path, str]] = []
-    for person_dir in sorted(p for p in dataset_dir.iterdir() if p.is_dir()):
-        label = person_dir.name
-        for img in sorted(
-            (p for p in person_dir.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS),
-            key=lambda p: p.name,
-        ):
-            images.append((img, label))
+    images = collect_images(dataset_dir)
 
     if not images:
         raise SystemExit("No images found")
@@ -54,6 +67,7 @@ def main() -> None:
 
     latencies: list[float] = []
     found = 0
+    failed = 0
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -88,6 +102,7 @@ def main() -> None:
                     found += 1
             except Exception:
                 ok = 0
+                failed += 1
                 latency_ms = (time.perf_counter() - start) * 1000
                 match = False
 
@@ -106,7 +121,11 @@ def main() -> None:
     total_time = time.perf_counter() - total_start
     latencies_np = np.array(latencies, dtype=np.float32)
     summary = {
+        "available_images": len(images),
+        "requested_samples": args.samples,
         "samples": len(latencies),
+        "successful_requests": len(latencies) - failed,
+        "failed_requests": failed,
         "k": args.k,
         "recall_at_k": found / len(latencies),
         "latency_p50_ms": float(np.percentile(latencies_np, 50)),

@@ -31,6 +31,22 @@ import torch
 from training.models.ir_resnet import build_model
 
 
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
+
+
+def load_model_state(weights_path: str, device: torch.device) -> dict[str, torch.Tensor]:
+    path = Path(weights_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Weights file not found: {path}")
+
+    state = torch.load(path, map_location=device, weights_only=False)
+    return state.get("state_dict", state)
+
+
 def export_to_onnx(
     weights_path: str,
     output_path: str,
@@ -43,8 +59,7 @@ def export_to_onnx(
     device = torch.device("cpu")
 
     model = build_model(arch, embedding_dim).to(device)
-    state = torch.load(weights_path, map_location=device, weights_only=False)
-    model.load_state_dict(state.get("state_dict", state), strict=False)
+    model.load_state_dict(load_model_state(weights_path, device), strict=False)
     model.eval()
 
     dummy_input = torch.randn(1, 3, input_size, input_size).to(device)
@@ -84,8 +99,7 @@ def validate_onnx(
 
     device = torch.device("cpu")
     model = build_model(arch, embedding_dim).to(device)
-    state = torch.load(weights_path, map_location=device, weights_only=False)
-    model.load_state_dict(state.get("state_dict", state), strict=False)
+    model.load_state_dict(load_model_state(weights_path, device), strict=False)
     model.eval()
 
     dummy = torch.randn(1, 3, input_size, input_size)
@@ -110,9 +124,9 @@ def main() -> None:
     parser.add_argument("--weights", required=True, help="Path to .pth checkpoint")
     parser.add_argument("--output", default="models/custom_ir50.onnx", help="ONNX output path")
     parser.add_argument("--arch", default="ir50", choices=["ir18", "ir34", "ir50", "ir100"])
-    parser.add_argument("--embedding-dim", type=int, default=512)
-    parser.add_argument("--input-size", type=int, default=112)
-    parser.add_argument("--opset", type=int, default=17)
+    parser.add_argument("--embedding-dim", type=positive_int, default=512)
+    parser.add_argument("--input-size", type=positive_int, default=112)
+    parser.add_argument("--opset", type=positive_int, default=17)
     parser.add_argument("--validate", action="store_true", help="Validate after export")
     args = parser.parse_args()
 

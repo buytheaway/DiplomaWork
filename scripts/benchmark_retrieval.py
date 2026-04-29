@@ -28,6 +28,13 @@ import faiss
 import numpy as np
 
 
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
+
+
 def build_flat(vectors: np.ndarray) -> faiss.Index:
     """Build a flat (exact) inner-product index."""
     d = vectors.shape[1]
@@ -94,6 +101,9 @@ def measure_latency(
 
     # Timed runs
     n_runs = min(n_runs, len(queries))
+    if n_runs == 0:
+        return 0.0
+
     total = 0.0
     for i in range(n_runs):
         start = time.perf_counter()
@@ -113,25 +123,29 @@ def measure_memory_mb(index: faiss.Index) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark FAISS retrieval methods")
     parser.add_argument("--source-index", default=None, help="Path to existing FAISS index to extract vectors from")
-    parser.add_argument("--n-vectors", type=int, default=9240, help="Number of vectors (if generating random)")
-    parser.add_argument("--dim", type=int, default=512, help="Vector dimensionality")
-    parser.add_argument("--n-queries", type=int, default=500, help="Number of test queries")
+    parser.add_argument("--n-vectors", type=positive_int, default=9240, help="Number of vectors (if generating random)")
+    parser.add_argument("--dim", type=positive_int, default=512, help="Vector dimensionality")
+    parser.add_argument("--n-queries", type=positive_int, default=500, help="Number of test queries")
     parser.add_argument("--output", default="training/outputs/retrieval_benchmark.json")
     # HNSW params
-    parser.add_argument("--hnsw-m", type=int, default=32)
-    parser.add_argument("--hnsw-ef-construction", type=int, default=200)
-    parser.add_argument("--hnsw-ef-search", type=int, nargs="+", default=[32, 64, 128])
+    parser.add_argument("--hnsw-m", type=positive_int, default=32)
+    parser.add_argument("--hnsw-ef-construction", type=positive_int, default=200)
+    parser.add_argument("--hnsw-ef-search", type=positive_int, nargs="+", default=[32, 64, 128])
     # IVF-PQ params
-    parser.add_argument("--ivfpq-nlist", type=int, default=100)
-    parser.add_argument("--ivfpq-m", type=int, default=16)
-    parser.add_argument("--ivfpq-nbits", type=int, default=8)
-    parser.add_argument("--ivfpq-nprobe", type=int, nargs="+", default=[4, 8, 16, 32])
+    parser.add_argument("--ivfpq-nlist", type=positive_int, default=100)
+    parser.add_argument("--ivfpq-m", type=positive_int, default=16)
+    parser.add_argument("--ivfpq-nbits", type=positive_int, default=8)
+    parser.add_argument("--ivfpq-nprobe", type=positive_int, nargs="+", default=[4, 8, 16, 32])
     args = parser.parse_args()
 
     # --- Load or generate vectors ---
-    if args.source_index and Path(args.source_index).exists():
-        print(f"Loading vectors from {args.source_index} ...")
-        src_index = faiss.read_index(args.source_index)
+    source_index_path = Path(args.source_index) if args.source_index else None
+    if source_index_path is not None and not source_index_path.exists():
+        raise SystemExit(f"Source index not found: {source_index_path}")
+
+    if source_index_path is not None:
+        print(f"Loading vectors from {source_index_path} ...")
+        src_index = faiss.read_index(str(source_index_path))
         n = src_index.ntotal
         d = src_index.d
         vectors = np.zeros((n, d), dtype=np.float32)

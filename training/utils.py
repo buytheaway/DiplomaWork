@@ -21,7 +21,7 @@ def set_seed(seed: int) -> None:
 
 def load_config(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as handle:
-        return yaml.safe_load(handle)
+        return yaml.safe_load(handle) or {}
 
 
 def ensure_dir(path: str | Path) -> Path:
@@ -64,4 +64,4 @@ def save_metrics(output_dir: Path, metrics: dict[str, Any]) -> None:
     output_dir = ensure_dir(output_dir)
     path = output_dir / "metrics.json"
     with path.open("w", encoding="utf-8") as handle:
-        json.dump(metrics, handle, indent=2)
+        json.dump(metrics, handle, indent=2, sort_keys=True)
