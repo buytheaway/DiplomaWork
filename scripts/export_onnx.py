@@ -31,6 +31,13 @@ import torch
 from training.models.ir_resnet import build_model
 
 
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
+
+
 def load_model_state(weights_path: str, device: torch.device) -> dict[str, torch.Tensor]:
     path = Path(weights_path)
     if not path.exists():
@@ -117,9 +124,9 @@ def main() -> None:
     parser.add_argument("--weights", required=True, help="Path to .pth checkpoint")
     parser.add_argument("--output", default="models/custom_ir50.onnx", help="ONNX output path")
     parser.add_argument("--arch", default="ir50", choices=["ir18", "ir34", "ir50", "ir100"])
-    parser.add_argument("--embedding-dim", type=int, default=512)
-    parser.add_argument("--input-size", type=int, default=112)
-    parser.add_argument("--opset", type=int, default=17)
+    parser.add_argument("--embedding-dim", type=positive_int, default=512)
+    parser.add_argument("--input-size", type=positive_int, default=112)
+    parser.add_argument("--opset", type=positive_int, default=17)
     parser.add_argument("--validate", action="store_true", help="Validate after export")
     args = parser.parse_args()
 
