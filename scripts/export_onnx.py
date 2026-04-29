@@ -31,6 +31,11 @@ import torch
 from training.models.ir_resnet import build_model
 
 
+def load_model_state(weights_path: str, device: torch.device) -> dict[str, torch.Tensor]:
+    state = torch.load(weights_path, map_location=device, weights_only=False)
+    return state.get("state_dict", state)
+
+
 def export_to_onnx(
     weights_path: str,
     output_path: str,
@@ -43,8 +48,7 @@ def export_to_onnx(
     device = torch.device("cpu")
 
     model = build_model(arch, embedding_dim).to(device)
-    state = torch.load(weights_path, map_location=device, weights_only=False)
-    model.load_state_dict(state.get("state_dict", state), strict=False)
+    model.load_state_dict(load_model_state(weights_path, device), strict=False)
     model.eval()
 
     dummy_input = torch.randn(1, 3, input_size, input_size).to(device)
@@ -84,8 +88,7 @@ def validate_onnx(
 
     device = torch.device("cpu")
     model = build_model(arch, embedding_dim).to(device)
-    state = torch.load(weights_path, map_location=device, weights_only=False)
-    model.load_state_dict(state.get("state_dict", state), strict=False)
+    model.load_state_dict(load_model_state(weights_path, device), strict=False)
     model.eval()
 
     dummy = torch.randn(1, 3, input_size, input_size)
