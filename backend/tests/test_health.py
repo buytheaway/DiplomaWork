@@ -21,6 +21,12 @@ def test_health_endpoint():
         assert "pretrained" in body["available_pipelines"]
 
 
+def test_health_reports_dummy_backend_in_testing():
+    with TestClient(create_app()) as client:
+        body = client.get("/v1/health").json()
+        assert body["embedding_backend"] == "dummy"
+
+
 def test_testing_uses_dummy_extractor():
     with TestClient(create_app()) as client:
         assert client.app.state.extractor.model_name == "dummy"
