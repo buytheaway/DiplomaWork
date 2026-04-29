@@ -101,6 +101,9 @@ def measure_latency(
 
     # Timed runs
     n_runs = min(n_runs, len(queries))
+    if n_runs == 0:
+        return 0.0
+
     total = 0.0
     for i in range(n_runs):
         start = time.perf_counter()
