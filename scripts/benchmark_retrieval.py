@@ -139,9 +139,13 @@ def main() -> None:
     args = parser.parse_args()
 
     # --- Load or generate vectors ---
-    if args.source_index and Path(args.source_index).exists():
-        print(f"Loading vectors from {args.source_index} ...")
-        src_index = faiss.read_index(args.source_index)
+    source_index_path = Path(args.source_index) if args.source_index else None
+    if source_index_path is not None and not source_index_path.exists():
+        raise SystemExit(f"Source index not found: {source_index_path}")
+
+    if source_index_path is not None:
+        print(f"Loading vectors from {source_index_path} ...")
+        src_index = faiss.read_index(str(source_index_path))
         n = src_index.ntotal
         d = src_index.d
         vectors = np.zeros((n, d), dtype=np.float32)
