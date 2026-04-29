@@ -32,7 +32,11 @@ from training.models.ir_resnet import build_model
 
 
 def load_model_state(weights_path: str, device: torch.device) -> dict[str, torch.Tensor]:
-    state = torch.load(weights_path, map_location=device, weights_only=False)
+    path = Path(weights_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Weights file not found: {path}")
+
+    state = torch.load(path, map_location=device, weights_only=False)
     return state.get("state_dict", state)
 
 
