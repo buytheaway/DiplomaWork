@@ -10,7 +10,7 @@ try:
 except ImportError:  # pragma: no cover - runtime dependency check
     cv2 = None
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -34,6 +34,7 @@ from app.core.config import DesktopSettings
 from app.core.worker import ApiWorker
 from app.ui.activity import record_event
 from app.ui.dialogs import show_error, show_warning
+from app.ui.live_geometry import encoded_frame_geometry, scale_bbox
 from app.ui.widgets import (
     ActionButton,
     Card,
@@ -63,6 +64,7 @@ class SearchTab(QWidget):
         self._live_paused = False
         self._latest_frame: Any | None = None
         self._frame_for_request: Any | None = None
+        self._request_bbox_scale: tuple[float, float] = (1.0, 1.0)
         self._live_annotations: list[dict[str, Any]] = []
         self._camera_timer = QTimer(self)
         self._camera_timer.timeout.connect(self._update_camera_frame)
@@ -206,6 +208,21 @@ class SearchTab(QWidget):
         summary_grid.addWidget(self.info_latency, 1, 0)
         summary_grid.addWidget(self.info_faces, 1, 1)
         summary.addLayout(summary_grid)
+
+        self.summary_message = QLabel("No search has been run yet.")
+        self.summary_message.setObjectName("decisionText")
+        self.summary_message.setWordWrap(True)
+        self.summary_message.setProperty("state", "idle")
+        summary.addWidget(self.summary_message)
+
+        self.compare_summary_row = QHBoxLayout()
+        self.compare_summary_row.setSpacing(10)
+        self.compare_pretrained = self._make_compare_tile("Pretrained")
+        self.compare_custom = self._make_compare_tile("Custom")
+        self.compare_summary_row.addWidget(self.compare_pretrained, 1)
+        self.compare_summary_row.addWidget(self.compare_custom, 1)
+        summary.addLayout(self.compare_summary_row)
+        self._set_compare_summary_visible(False)
         right_col.addWidget(summary_card)
 
         self.detected_faces_card = Card(variant="subtle")
@@ -221,8 +238,8 @@ class SearchTab(QWidget):
         matches_card = Card()
         matches = matches_card.body()
         matches.addWidget(SectionHeading("Top matches"))
-        self.matches_table = QTableWidget(0, 6)
-        self.matches_table.setHorizontalHeaderLabels(["Label", "Person ID", "Pipeline", "Face", "Score", "Distance"])
+        self.matches_table = QTableWidget(0, 5)
+        self.matches_table.setHorizontalHeaderLabels(["Label", "Decision", "Pipeline", "Face", "Score"])
         self.matches_table.verticalHeader().setVisible(False)
         self.matches_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.matches_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -247,6 +264,29 @@ class SearchTab(QWidget):
         root.addWidget(self.details_section)
 
         self._set_mode("search")
+
+    def _make_compare_tile(self, title: str) -> Card:
+        tile = Card(variant="subtle")
+        body = tile.body()
+        body.setContentsMargins(12, 10, 12, 10)
+        heading = QLabel(title)
+        heading.setObjectName("microLabel")
+        score = QLabel("-")
+        score.setObjectName("infoValue")
+        meta = DimLabel("No result")
+        body.addWidget(heading)
+        body.addWidget(score)
+        body.addWidget(meta)
+        tile.score_label = score  # type: ignore[attr-defined]
+        tile.meta_label = meta  # type: ignore[attr-defined]
+        return tile
+
+    def _set_compare_summary_visible(self, visible: bool) -> None:
+        for idx in range(self.compare_summary_row.count()):
+            item = self.compare_summary_row.itemAt(idx)
+            widget = item.widget()
+            if widget is not None:
+                widget.setVisible(visible)
 
     def _make_mode_button(self, text: str, mode: str) -> QPushButton:
         button = QPushButton(text)
@@ -331,6 +371,8 @@ class SearchTab(QWidget):
         self.info_best.set_value("-")
         self.info_latency.set_value("-")
         self.info_faces.set_value("-")
+        self._set_summary_message("idle", "No search has been run yet.")
+        self._set_compare_summary_visible(False)
 
     def _execute(self) -> None:
         path = self._image_path()
@@ -344,11 +386,19 @@ class SearchTab(QWidget):
 
         self._dispatch_request(path, origin="manual", source_label=path)
 
-    def _dispatch_request(self, image_source: str | bytes, *, origin: str, source_label: str) -> None:
+    def _dispatch_request(
+        self,
+        image_source: str | bytes,
+        *,
+        origin: str,
+        source_label: str,
+        bbox_scale: tuple[float, float] = (1.0, 1.0),
+    ) -> None:
         if self._worker is not None and self._worker.isRunning():
             return
 
         self._request_origin = origin
+        self._request_bbox_scale = bbox_scale
         self._request_started = time.perf_counter()
         self.execute_btn.setEnabled(origin != "manual")
 
@@ -397,9 +447,10 @@ class SearchTab(QWidget):
 
         if origin == "live":
             if self._live_paused:
-                self.live_status.set_state("warn", f"Paused · {latency_ms:.0f} ms")
+                self.live_status.set_state("warn", f"Paused - {latency_ms:.0f} ms")
             else:
-                self.live_status.set_state("ok", f"Live · {latency_ms:.0f} ms")
+                state, text = self._live_status_from_payload(payload, latency_ms)
+                self.live_status.set_state(state, text)
             self._update_live_annotations(payload)
 
     def _render_enroll(self, payload: object, latency_ms: float) -> None:
@@ -408,10 +459,12 @@ class SearchTab(QWidget):
             return
 
         self.matches_pill.set_state("ok", "Profile registered")
-        self.info_mode.set_value(f"Enroll · {str(payload.get('pipeline', '-')).title()}")
+        self.info_mode.set_value(f"Enroll - {str(payload.get('pipeline', '-')).title()}")
         self.info_best.set_value(str(payload.get("person_id", "-"))[:18])
         self.info_latency.set_value(f"{latency_ms:.0f} ms")
         self.info_faces.set_value(str(payload.get("faces_detected", 0)))
+        self._set_summary_message("ok", "Profile registered and indexed for search.")
+        self._set_compare_summary_visible(False)
 
         row = {
             "label": self.label_input.text().strip() or "Registered",
@@ -420,6 +473,7 @@ class SearchTab(QWidget):
             "face_index": 0,
             "score": 1.0,
             "distance": 0.0,
+            "_decision": "Registered",
         }
         self._populate_results([row])
         record_event(
@@ -446,8 +500,17 @@ class SearchTab(QWidget):
         self.info_best.set_value(f"{best_score:.4f}" if best_score is not None else "-")
         self.info_latency.set_value(f"{payload.get('latency_ms', latency_ms):.0f} ms")
         self.info_faces.set_value(f"{matched_faces}/{faces_detected}")
+        self._set_compare_summary_visible(False)
+        self._set_summary_message(
+            pill_state,
+            self._search_summary_text(decision, best_score, matched_faces, faces_detected),
+        )
 
-        self._populate_results(results, empty_text="No matches returned for this query.")
+        self._populate_results(
+            results,
+            empty_text="No matches returned for this query.",
+            threshold=payload.get("threshold_used"),
+        )
         if self._request_origin != "live":
             record_event(
                 "search",
@@ -470,18 +533,25 @@ class SearchTab(QWidget):
         for item in comparisons:
             pipeline = item.get("pipeline", "?")
             best = item.get("best_score")
+            threshold = item.get("threshold_used")
             best_summary.append(f"{pipeline}: {best:.4f}" if best is not None else f"{pipeline}: -")
             total_faces += int(item.get("faces_detected", 0))
             for result in item.get("results", []):
                 row = dict(result)
                 row["pipeline"] = pipeline
+                row["threshold_used"] = threshold
                 merged_results.append(row)
 
         self.matches_pill.set_state("warn", f"{len(merged_results)} matches")
-        self.info_mode.set_value(f"Compare · fastest {str(fastest).title()}")
+        self.info_mode.set_value(f"Compare - fastest {str(fastest).title()}")
         self.info_best.set_value(" | ".join(best_summary) if best_summary else "-")
         self.info_latency.set_value(f"{latency_ms:.0f} ms")
         self.info_faces.set_value(str(total_faces))
+        self._render_compare_summary(comparisons, fastest)
+        self._set_summary_message(
+            "ok" if merged_results else "warn",
+            self._compare_summary_text(comparisons, fastest),
+        )
 
         merged_results.sort(key=lambda item: float(item.get("score", 0.0)), reverse=True)
         self._populate_results(merged_results, empty_text="Compare completed, but no matches were returned.")
@@ -497,7 +567,79 @@ class SearchTab(QWidget):
         self.matches_table.setRowCount(0)
         self.results_hint.setText("Run a search to see matches here.")
 
-    def _populate_results(self, results: list[dict[str, Any]], *, empty_text: str | None = None) -> None:
+    def _set_summary_message(self, state: str, text: str) -> None:
+        self.summary_message.setText(text)
+        self.summary_message.setProperty("state", state)
+        self.summary_message.style().unpolish(self.summary_message)
+        self.summary_message.style().polish(self.summary_message)
+
+    def _search_summary_text(
+        self,
+        decision: object,
+        best_score: object,
+        matched_faces: object,
+        faces_detected: object,
+    ) -> str:
+        if decision == "match":
+            score = self._format_score(best_score)
+            return f"Match found. {matched_faces}/{faces_detected} detected face(s) passed the threshold. Best score: {score}."
+        if int(faces_detected or 0) > 0:
+            return f"No confident match. {faces_detected} face(s) detected, but scores stayed below the threshold."
+        return "No face result is available for this request."
+
+    def _compare_summary_text(self, comparisons: list[dict[str, Any]], fastest: object) -> str:
+        if not comparisons:
+            return "Compare did not return pipeline results."
+        matched = [
+            str(item.get("pipeline", "-"))
+            for item in comparisons
+            if item.get("decision") == "match"
+        ]
+        if matched:
+            return f"Compare found a match in {', '.join(matched)}. Fastest pipeline: {fastest or '-'}."
+        if any(item.get("error") for item in comparisons):
+            return "Compare completed with a pipeline error. Open technical details for the raw response."
+        return f"Both pipelines completed without a confident match. Fastest pipeline: {fastest or '-'}."
+
+    def _render_compare_summary(self, comparisons: list[dict[str, Any]], fastest: object) -> None:
+        tiles = {
+            "pretrained": self.compare_pretrained,
+            "custom": self.compare_custom,
+        }
+        for _key, tile in tiles.items():
+            score_label = tile.score_label
+            meta_label = tile.meta_label
+            score_label.setText("-")
+            meta_label.setText("No result")
+
+        for item in comparisons:
+            key = str(item.get("pipeline", "")).lower()
+            tile = tiles.get(key)
+            if tile is None:
+                continue
+            score_label = tile.score_label
+            meta_label = tile.meta_label
+            best = item.get("best_score")
+            score_label.setText(self._format_score(best))
+            parts = [
+                str(item.get("decision", "unknown")).title(),
+                f"{item.get('latency_ms', 0):.0f} ms",
+                f"{item.get('matched_faces', 0)}/{item.get('faces_detected', 0)} faces",
+            ]
+            if item.get("pipeline") == fastest:
+                parts.append("fastest")
+            if item.get("error"):
+                parts = ["Error", str(item.get("error"))]
+            meta_label.setText(" - ".join(parts))
+        self._set_compare_summary_visible(True)
+
+    def _populate_results(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        empty_text: str | None = None,
+        threshold: Any | None = None,
+    ) -> None:
         self.matches_table.setRowCount(len(results))
         if not results:
             self.results_hint.setText(empty_text or "No results.")
@@ -506,16 +648,70 @@ class SearchTab(QWidget):
         for row, result in enumerate(results):
             values = [
                 str(result.get("label") or "Unknown"),
-                str(result.get("person_id") or "")[:18],
+                self._result_decision(result, threshold),
                 str(result.get("pipeline") or "-"),
                 str(int(result.get("face_index", 0)) + 1),
                 self._format_score(result.get("score")),
-                self._format_score(result.get("distance")),
             ]
+            tooltip = self._result_tooltip(result)
             for col, value in enumerate(values):
-                self.matches_table.setItem(row, col, QTableWidgetItem(value))
+                item = QTableWidgetItem(value)
+                item.setToolTip(tooltip)
+                self.matches_table.setItem(row, col, item)
         self.matches_table.resizeColumnsToContents()
         self.results_hint.setText(f"Showing {len(results)} result(s).")
+
+    def _result_decision(self, result: dict[str, Any], threshold: Any | None) -> str:
+        explicit = result.get("_decision")
+        if explicit:
+            return str(explicit)
+
+        score = result.get("score")
+        if score is None:
+            return "-"
+        local_threshold = result.get("threshold_used", threshold)
+        try:
+            score_value = float(score)
+            if local_threshold is not None:
+                return "Match" if score_value >= float(local_threshold) else "Candidate"
+        except (TypeError, ValueError):
+            return "-"
+        return "Candidate"
+
+    def _result_tooltip(self, result: dict[str, Any]) -> str:
+        parts = []
+        for label, key in [
+            ("Person ID", "person_id"),
+            ("Embedding ID", "embedding_id"),
+            ("Distance", "distance"),
+            ("Detection", "detection_score"),
+        ]:
+            value = result.get(key)
+            if value is not None and value != "":
+                parts.append(f"{label}: {value}")
+        return "\n".join(parts) if parts else "No additional details"
+
+    def _live_status_from_payload(self, payload: object, latency_ms: float) -> tuple[str, str]:
+        if not isinstance(payload, dict):
+            return "ok", f"Live - {latency_ms:.0f} ms"
+
+        if "comparisons" in payload:
+            comparisons = payload.get("comparisons", [])
+            decisions = [str(item.get("decision", "")).lower() for item in comparisons]
+            if "match" in decisions:
+                return "ok", f"Match - {latency_ms:.0f} ms"
+            if any(decision == "unknown" for decision in decisions):
+                return "warn", f"Unknown - {latency_ms:.0f} ms"
+            if any(item.get("error") for item in comparisons):
+                return "error", "Compare error"
+            return "ok", f"Live - {latency_ms:.0f} ms"
+
+        decision = str(payload.get("decision", "")).lower()
+        if decision == "match":
+            return "ok", f"Match - {latency_ms:.0f} ms"
+        if decision == "unknown":
+            return "warn", f"Unknown - {latency_ms:.0f} ms"
+        return "ok", f"Live - {latency_ms:.0f} ms"
 
     def _format_score(self, value: Any) -> str:
         if value is None or value == "":
@@ -530,6 +726,7 @@ class SearchTab(QWidget):
         self._worker = None
         self.execute_btn.setEnabled(True)
         self.matches_pill.set_state("error", "Request failed")
+        self._set_summary_message("error", error)
         record_event("search", "Request failed", severity="ERROR", details=error)
         if origin != "live" or self.details_section.is_expanded():
             self.console.setPlainText(error)
@@ -607,6 +804,7 @@ class SearchTab(QWidget):
         self._camera = camera
         self._latest_frame = None
         self._frame_for_request = None
+        self._request_bbox_scale = (1.0, 1.0)
         self._live_annotations = []
         self._live_running = True
         self._live_paused = False
@@ -681,26 +879,34 @@ class SearchTab(QWidget):
             return
         frame = self._frame_for_request
         self._frame_for_request = None  # mark as consumed
-        encoded = self._encode_frame(frame)
-        if encoded is None:
+        encoded_result = self._encode_frame(frame)
+        if encoded_result is None:
             self.live_status.set_state("error", "Encode failed")
             return
-        self._dispatch_request(encoded, origin="live", source_label="camera")
+        encoded, bbox_scale = encoded_result
+        self._dispatch_request(
+            encoded,
+            origin="live",
+            source_label="camera",
+            bbox_scale=bbox_scale,
+        )
 
-    def _encode_frame(self, frame: Any) -> bytes | None:
+    def _encode_frame(self, frame: Any) -> tuple[bytes, tuple[float, float]] | None:
         if cv2 is None:
             return None
         h, w = frame.shape[:2]
-        # Downscale large frames for faster encoding and network transfer
-        max_width = max(160, self.settings.live_max_width)
-        if w > max_width:
-            scale = max_width / w
-            frame = cv2.resize(frame, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA)
+        encoded_w, encoded_h, bbox_scale = encoded_frame_geometry(
+            width=w,
+            height=h,
+            max_width=self.settings.live_max_width,
+        )
+        if encoded_w != w or encoded_h != h:
+            frame = cv2.resize(frame, (encoded_w, encoded_h), interpolation=cv2.INTER_AREA)
         quality = min(max(self.settings.live_jpeg_quality, 40), 95)
         ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
         if not ok:
             return None
-        return buffer.tobytes()
+        return buffer.tobytes(), bbox_scale
 
     def _show_frame(self, frame: Any) -> None:
         pixmap = self._frame_to_pixmap(frame)
@@ -768,7 +974,7 @@ class SearchTab(QWidget):
     def _update_live_annotations(self, payload: object) -> None:
         if not isinstance(payload, dict):
             return
-        self._live_annotations = self._extract_annotations(payload)
+        self._live_annotations = self._extract_annotations(payload, self._request_bbox_scale)
         self._render_frame_faces(self._live_annotations)
         # No need to force-redraw here; the camera timer will pick up
         # the new annotations on the next frame tick (~33ms away)
@@ -780,7 +986,11 @@ class SearchTab(QWidget):
             return (115, 204, 255)
         return (136, 107, 255)
 
-    def _extract_annotations(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    def _extract_annotations(
+        self,
+        payload: dict[str, Any],
+        bbox_scale: tuple[float, float] = (1.0, 1.0),
+    ) -> list[dict[str, Any]]:
         grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
         thresholds: dict[int, float] = {}
 
@@ -791,6 +1001,7 @@ class SearchTab(QWidget):
                 for result in comparison.get("results", []):
                     row = dict(result)
                     row["pipeline"] = pipeline
+                    row["face_bbox"] = scale_bbox(row.get("face_bbox"), bbox_scale)
                     grouped[int(row.get("face_index", 0))].append(row)
                     thresholds[int(row.get("face_index", 0))] = max(
                         threshold,
@@ -799,7 +1010,9 @@ class SearchTab(QWidget):
         else:
             threshold = float(payload.get("threshold_used", 0.0))
             for result in payload.get("results", []):
-                grouped[int(result.get("face_index", 0))].append(dict(result))
+                row = dict(result)
+                row["face_bbox"] = scale_bbox(row.get("face_bbox"), bbox_scale)
+                grouped[int(result.get("face_index", 0))].append(row)
                 thresholds[int(result.get("face_index", 0))] = threshold
 
         annotations: list[dict[str, Any]] = []
@@ -833,7 +1046,7 @@ class SearchTab(QWidget):
             annotations.append(
                 {
                     "face_index": face_index,
-                    "face_bbox": face_info.get("face_bbox"),
+                    "face_bbox": scale_bbox(face_info.get("face_bbox"), bbox_scale),
                     "detection_score": face_info.get("detection_score"),
                     "label": "No match",
                     "quality": "unknown",

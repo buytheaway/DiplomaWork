@@ -50,13 +50,13 @@ def delete_person(
     if person is None:
         raise HTTPException(status_code=404, detail="Person not found")
 
-    active_models = {emb.model for emb in person.embeddings if emb.is_active}
+    active_pipelines = {emb.pipeline for emb in person.embeddings if emb.is_active}
     repo.soft_delete(person_id)
 
     rebuilt_pipelines: list[str] = []
     for key in registry.available_pipelines():
         runtime = registry.get(key)
-        if runtime.extractor.model_name not in active_models:
+        if runtime.key not in active_pipelines:
             continue
         runtime.index_manager.rebuild_current(db)
         rebuilt_pipelines.append(runtime.key)

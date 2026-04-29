@@ -63,10 +63,8 @@ class DashboardTab(QWidget):
         overview.addWidget(self.overview_text)
 
         self.overview_lines = QLabel("No data loaded yet.")
-        self.overview_lines.setObjectName("dropZoneSubtitle")
-        self.overview_lines.setStyleSheet(
-            "padding: 14px; border: 1px solid #25313d; border-radius: 8px; background-color: #0f151d;"
-        )
+        self.overview_lines.setObjectName("dimLabel")
+        self.overview_lines.setWordWrap(True)
         overview.addWidget(self.overview_lines)
 
         actions = QHBoxLayout()
@@ -165,7 +163,7 @@ class DashboardTab(QWidget):
             body = row.body()
             body.setContentsMargins(12, 12, 12, 12)
             body.addWidget(DimLabel(event.timestamp.strftime("%Y-%m-%d %H:%M:%S")))
-            title = QLabel(f"{event.category.title()} · {event.severity}")
+            title = QLabel(f"{event.category.title()} - {event.severity}")
             title.setObjectName("topbarTitle")
             title.setStyleSheet("font-size: 13px;")
             body.addWidget(title)

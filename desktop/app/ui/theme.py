@@ -86,6 +86,37 @@ def app_stylesheet() -> str:
         background: transparent;
     }}
 
+    QLabel#decisionText {{
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        background-color: rgba(148, 165, 181, 0.08);
+        border: 1px solid {BORDER_SOFT};
+    }}
+
+    QLabel#decisionText[state="ok"] {{
+        color: {SUCCESS};
+        background-color: rgba(83, 216, 178, 0.08);
+        border-color: rgba(83, 216, 178, 0.22);
+    }}
+
+    QLabel#decisionText[state="warn"] {{
+        color: {WARN};
+        background-color: rgba(230, 192, 107, 0.08);
+        border-color: rgba(230, 192, 107, 0.22);
+    }}
+
+    QLabel#decisionText[state="error"] {{
+        color: {ERROR};
+        background-color: rgba(239, 125, 149, 0.08);
+        border-color: rgba(239, 125, 149, 0.22);
+    }}
+
+    QLabel#decisionText[state="idle"] {{
+        color: {TEXT_SOFT};
+    }}
+
     QLabel#metricTitle {{
         color: {TEXT_MUTED};
         font-size: 11px;

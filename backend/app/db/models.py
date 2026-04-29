@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
-from app.db.types import GUID, JSONType
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import LargeBinary
+
+from app.db.types import GUID, JSONType
 
 
 def _utcnow() -> datetime:
     """Timezone-aware UTC timestamp (replaces deprecated ``datetime.utcnow``)."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -31,7 +32,7 @@ class Person(Base):
         default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
-    embeddings: Mapped[list["Embedding"]] = relationship(
+    embeddings: Mapped[list[Embedding]] = relationship(
         back_populates="person", cascade="all, delete-orphan"
     )
 
@@ -41,6 +42,7 @@ class Embedding(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     person_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("persons.id"))
+    pipeline: Mapped[str] = mapped_column(String(20), default="pretrained", nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     dim: Mapped[int] = mapped_column(nullable=False)
     vector: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)

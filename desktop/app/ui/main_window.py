@@ -94,16 +94,6 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
-        status_row = QHBoxLayout()
-        status_row.setSpacing(8)
-        label = QLabel("Connection")
-        label.setObjectName("operatorName")
-        self._sidebar_health = StatusPill("Checking", state="idle")
-        status_row.addWidget(label)
-        status_row.addStretch()
-        status_row.addWidget(self._sidebar_health)
-        layout.addLayout(status_row)
-
         self._sidebar_meta = QLabel(self._settings.base_url.rstrip("/"))
         self._sidebar_meta.setObjectName("operatorMeta")
         layout.addWidget(self._sidebar_meta)
@@ -150,14 +140,12 @@ class MainWindow(QMainWindow):
             backend = str(data.get("embedding_backend", "?"))
             pipelines = [str(item) for item in data.get("available_pipelines", [])]
             pipeline_text = ", ".join(pipelines) if pipelines else "no pipelines"
-            self._header_status.set_state("ok", f"{backend} · {pipeline_text}")
-            self._sidebar_health.set_state("ok", "Online")
+            self._header_status.set_state("ok", f"{backend} - {pipeline_text}")
             if self._last_health_ok is not True:
                 record_event("ui", "Backend link established", severity="INFO", details=url)
             self._last_health_ok = True
         except Exception as exc:  # noqa: BLE001
             self._header_status.set_state("error", "Backend offline")
-            self._sidebar_health.set_state("error", "Offline")
             if self._last_health_ok is not False:
                 record_event("ui", "Backend health check failed", severity="ERROR", details=str(exc))
             self._last_health_ok = False

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 class EmbeddingSummary(BaseModel):
     id: str
+    pipeline: str
     model: str
     dim: int
     is_active: bool

@@ -7,7 +7,11 @@ from typing import Literal
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.services.embeddings.interface import DummyEmbeddingExtractor, EmbeddingExtractor, create_extractor
+from app.services.embeddings.interface import (
+    DummyEmbeddingExtractor,
+    EmbeddingExtractor,
+    create_extractor,
+)
 from app.services.index.index_manager import IndexManager
 
 PipelineKey = Literal["pretrained", "custom"]
@@ -131,6 +135,7 @@ class PipelineRegistry:
         index_manager = IndexManager(
             pipeline_settings,
             model_name=extractor.model_name,
+            pipeline=key,
             index_path_override=pipeline_settings.index_path,
         )
         return PipelineRuntime(

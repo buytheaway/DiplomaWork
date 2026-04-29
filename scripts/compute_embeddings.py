@@ -54,6 +54,7 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--log-every", type=int, default=5000)
     parser.add_argument("--max-images", type=int, default=None)
+    parser.add_argument("--pipeline", default="pretrained", choices=["pretrained", "custom"])
     parser.add_argument("--seed", type=int, default=None, help="Override SEED from config")
     args = parser.parse_args()
 
@@ -115,6 +116,7 @@ def main() -> None:
                 embedding = extractor.extract_embedding(image_bytes)
                 embedding_repo.create(
                     person_id=person.id,
+                    pipeline=args.pipeline,
                     model=extractor.model_name,
                     dim=int(embedding.shape[0]),
                     vector=embedding.tobytes(),

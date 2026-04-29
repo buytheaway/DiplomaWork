@@ -29,7 +29,11 @@ from app.services.index.index_manager import IndexMatch
 from app.services.runtime.pipeline_registry import PipelineRegistry
 from app.services.storage.audit import record_audit_event
 from app.services.storage.repositories import EmbeddingRepo
-from app.services.storage.uploads import UploadValidationError, allowed_content_types, read_image_upload
+from app.services.storage.uploads import (
+    UploadValidationError,
+    allowed_content_types,
+    read_image_upload,
+)
 
 router = APIRouter()
 
@@ -137,12 +141,14 @@ def _hydrate_results(
     db: Session,
     pipeline: str,
     faces: list[RawFaceOutcome],
+    threshold: float,
 ) -> list[SearchResult]:
     repo = EmbeddingRepo(db)
     embedding_ids = [
         match.embedding_id
         for face in faces
         for match in face.matches
+        if match.score >= threshold
     ]
     if not embedding_ids:
         return []
@@ -155,18 +161,20 @@ def _hydrate_results(
         seen_embedding_ids.add(embedding_id)
         unique_embedding_ids.append(embedding_id)
 
-    rows = repo.get_embeddings_with_person(unique_embedding_ids)
+    rows = repo.get_embeddings_with_person(unique_embedding_ids, pipeline=pipeline)
     lookup = {str(row.id): row for row in rows}
 
     results: list[SearchResult] = []
     for face in faces:
         bbox = list(face.face_bbox) if face.face_bbox is not None else None
         for match in face.matches:
+            if match.score < threshold:
+                continue
             row = lookup.get(match.embedding_id)
             if row is None or row.person is None:
                 continue
             # Skip deactivated embeddings or soft-deleted persons
-            if not row.is_active or row.person.status != "active":
+            if not row.is_active or row.person.status != "active" or row.pipeline != pipeline:
                 continue
             results.append(
                 SearchResult(
@@ -190,7 +198,12 @@ def _response_from_outcome(
     k: int,
     available_pipelines: list[str],
 ) -> SearchResponse:
-    results = _hydrate_results(db, outcome.pipeline, outcome.faces)
+    results = _hydrate_results(
+        db,
+        outcome.pipeline,
+        outcome.faces,
+        outcome.threshold_used,
+    )
     matched_faces = sum(1 for face in outcome.faces if face.best_match_above_threshold)
     detected_faces = [
         DetectedFaceInfo(
@@ -321,7 +334,12 @@ async def search_compare(
             CompareSearchItem(
                 pipeline=outcome.pipeline,
                 model=outcome.model,
-                results=_hydrate_results(db, outcome.pipeline, outcome.faces),
+                results=_hydrate_results(
+                    db,
+                    outcome.pipeline,
+                    outcome.faces,
+                    outcome.threshold_used,
+                ),
                 faces_detected=len(outcome.faces),
                 matched_faces=sum(
                     1 for face in outcome.faces if face.best_match_above_threshold

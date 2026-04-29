@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,11 @@ import numpy as np
 from sqlalchemy.orm import Session
 
 from app.core.config import BASE_DIR, Settings
-from app.security.crypto import decrypt_embedding_payload, decrypt_snapshot_payload, encrypt_snapshot_payload
+from app.security.crypto import (
+    decrypt_embedding_payload,
+    decrypt_snapshot_payload,
+    encrypt_snapshot_payload,
+)
 from app.services.index.faiss_index import FaissIndex
 from app.services.storage.repositories import EmbeddingRepo, IndexSnapshotRepo
 
@@ -37,6 +42,7 @@ class IndexManager:
         self,
         settings: Settings,
         model_name: str | None = None,
+        pipeline: str | None = None,
         index_path_override: str | None = None,
     ) -> None:
         self.settings = settings
@@ -52,7 +58,9 @@ class IndexManager:
         self._index_type = settings.index_type
         self._params = self.default_params_for(settings.index_type)
         self.model_name = model_name
+        self.pipeline = pipeline
         self.last_snapshot_id: str | None = None
+        self.current_snapshot_path: Path | None = None
         self._logger = logging.getLogger(__name__)
 
     # ── helpers ───────────────────────────────────────────────────────────
@@ -83,15 +91,41 @@ class IndexManager:
     def _map_path_for(self, path: Path) -> Path:
         return path.with_suffix(path.suffix + ".map.json")
 
-    def _save_index_files(self) -> None:
+    def _next_snapshot_path(self) -> Path:
+        suffix = self.index_path.suffix or ".faiss"
+        return self.index_path.with_name(
+            f"{self.index_path.stem}.{uuid.uuid4().hex}{suffix}"
+        )
+
+    def _write_atomic(self, path: Path, payload: bytes) -> None:
+        tmp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp_path.write_bytes(payload)
+            tmp_path.replace(path)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+
+    def _snapshot_files_exist(self, path: Path) -> bool:
+        return path.exists() and self._map_path_for(path).exists()
+
+    def _save_index_files(self) -> Path:
+        snapshot_path = self._next_snapshot_path()
         with tempfile.TemporaryDirectory() as tmpdir:
-            raw_path = Path(tmpdir) / self.index_path.name
+            raw_path = Path(tmpdir) / snapshot_path.name
             raw_map_path = self._map_path_for(raw_path)
-            target_map_path = self._map_path_for(self.index_path)
+            target_map_path = self._map_path_for(snapshot_path)
 
             self._index.save(str(raw_path))
-            self.index_path.write_bytes(encrypt_snapshot_payload(raw_path.read_bytes()))
-            target_map_path.write_bytes(encrypt_snapshot_payload(raw_map_path.read_bytes()))
+            self._write_atomic(
+                snapshot_path,
+                encrypt_snapshot_payload(raw_path.read_bytes()),
+            )
+            self._write_atomic(
+                target_map_path,
+                encrypt_snapshot_payload(raw_map_path.read_bytes()),
+            )
+        return snapshot_path
 
     def _load_index_files(self, path: Path) -> None:
         map_path = self._map_path_for(path)
@@ -106,13 +140,30 @@ class IndexManager:
 
     def load_latest_snapshot(self, db: Session) -> bool:
         repo = IndexSnapshotRepo(db)
-        snapshot = repo.get_latest_for_path(str(self.index_path))
-        if snapshot and Path(snapshot.path).exists():
+        for snapshot in repo.list_latest_for_path(str(self.index_path)):
+            snapshot_path = Path(snapshot.path)
+            if not self._snapshot_files_exist(snapshot_path):
+                self._logger.warning(
+                    "Skipping incomplete index snapshot id=%s path=%s",
+                    snapshot.id,
+                    snapshot.path,
+                )
+                continue
             self._index = self._create_index(snapshot.index_type, snapshot.params)
-            self._load_index_files(Path(snapshot.path))
+            try:
+                self._load_index_files(snapshot_path)
+            except Exception as exc:  # noqa: BLE001
+                self._logger.warning(
+                    "Skipping unreadable index snapshot id=%s path=%s: %s",
+                    snapshot.id,
+                    snapshot.path,
+                    exc,
+                )
+                continue
             self._index_type = snapshot.index_type
             self._params = snapshot.params
             self.last_snapshot_id = str(snapshot.id)
+            self.current_snapshot_path = snapshot_path
             self._logger.info(
                 "Loaded index snapshot id=%s type=%s count=%d path=%s",
                 snapshot.id,
@@ -125,15 +176,16 @@ class IndexManager:
         return False
 
     def save_snapshot(self, db: Session) -> None:
-        self._save_index_files()
+        snapshot_path = self._save_index_files()
         repo = IndexSnapshotRepo(db)
         snapshot = repo.create(
             index_type=self._index_type,
             params=self._params,
-            path=str(self.index_path),
+            path=str(snapshot_path),
             embeddings_count=self._index.count(),
         )
         self.last_snapshot_id = str(snapshot.id)
+        self.current_snapshot_path = snapshot_path
 
     # ── core operations ──────────────────────────────────────────────────
 
@@ -147,7 +199,10 @@ class IndexManager:
     def rebuild(self, db: Session, index_type: str, params: dict[str, Any]) -> dict[str, Any]:
         if not params:
             params = self.default_params_for(index_type)
-        embeddings = EmbeddingRepo(db).get_active_embeddings(model=self.model_name)
+        embeddings = EmbeddingRepo(db).get_active_embeddings(
+            model=self.model_name,
+            pipeline=self.pipeline,
+        )
         self._index = self._create_index(index_type, params)
         self._index_type = index_type
         self._params = params
@@ -160,7 +215,7 @@ class IndexManager:
                 ]
             )
             self._index.train(vectors)
-            for embedding, vector in zip(embeddings, vectors):
+            for embedding, vector in zip(embeddings, vectors, strict=False):
                 self._index.add_embedding(str(embedding.id), vector)
 
         self.save_snapshot(db)
@@ -172,9 +227,10 @@ class IndexManager:
     def stats(self) -> dict[str, Any]:
         stats = self._index.stats()
         stats["loaded"] = self._index.count() > 0
-        stats["file_path"] = str(self.index_path)
+        stats["file_path"] = str(self.current_snapshot_path or self.index_path)
         stats["last_snapshot_id"] = self.last_snapshot_id
         stats["model_name"] = self.model_name
+        stats["pipeline"] = self.pipeline
         return stats
 
     def count(self) -> int:

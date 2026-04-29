@@ -13,6 +13,7 @@ dist/
 .mypy_cache/
 .coverage
 htmlcov/
+.python/3.10.6
 
 # Virtual environments
 .venv/

@@ -74,9 +74,9 @@ class StatsTab(QWidget):
         right_col = QVBoxLayout()
         right_col.setSpacing(16)
 
-        controls_card = Card()
+        controls_card = CollapsibleSection("Index maintenance", expanded=False)
         controls = controls_card.body()
-        controls.addWidget(SectionHeading("Index controls"))
+        controls.addWidget(DimLabel("Rebuild controls are kept secondary because logs are the main view."))
 
         pipeline_row = QHBoxLayout()
         self.pipeline_combo = QComboBox()

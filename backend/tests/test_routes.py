@@ -10,9 +10,12 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.models import AuditLog
-from app.services.embeddings.interface import DummyEmbeddingExtractor, FaceEmbedding, NoFaceDetectedError
+from app.services.embeddings.interface import (
+    DummyEmbeddingExtractor,
+    FaceEmbedding,
+    NoFaceDetectedError,
+)
 from app.services.runtime.pipeline_registry import PipelineRuntime
-
 
 # ── health ───────────────────────────────────────────────────────────────────
 
@@ -126,7 +129,7 @@ def test_search_after_enroll(client):
     # threshold / decision fields present
     assert body["best_score"] is not None
     assert isinstance(body["threshold_used"], float)
-    assert body["decision"] in ("match", "unknown")
+    assert body["decision"] == "match"
     assert isinstance(body["best_match_above_threshold"], bool)
 
 
@@ -148,7 +151,8 @@ def test_search_one_face_unknown(client, monkeypatch):
     assert body["faces_detected"] == 1
     assert body["decision"] == "unknown"
     assert body["best_match_above_threshold"] is False
-    assert len(body["results"]) >= 1
+    assert body["best_score"] is not None
+    assert body["results"] == []
 
 
 def test_search_custom_pipeline_after_custom_enroll(client):
@@ -168,6 +172,40 @@ def test_search_custom_pipeline_after_custom_enroll(client):
     assert body["model"] == "dummy_custom"
     assert len(body["results"]) >= 1
     assert body["results"][0]["pipeline"] == "custom"
+
+
+def test_rebuild_filters_same_model_by_pipeline(client):
+    registry = client.app.state.pipeline_registry
+    registry.get("custom").extractor.model_name = registry.get("pretrained").extractor.model_name
+
+    client.post(
+        "/v1/enroll",
+        files={"file": ("a.jpg", b"\x89PNG_same_model_custom", "image/jpeg")},
+        data={"label": "SameModelCustom", "pipeline": "custom"},
+    )
+
+    rebuild_resp = client.post(
+        "/v1/index/rebuild",
+        json={"index_type": "hnsw", "params": {}, "pipeline": "pretrained"},
+    )
+    assert rebuild_resp.status_code == 200
+    assert rebuild_resp.json()["embeddings_count"] == 0
+
+    pretrained_resp = client.post(
+        "/v1/search",
+        params={"k": 1, "pipeline": "pretrained"},
+        files={"file": ("q.jpg", b"\x89PNG_same_model_query", "image/jpeg")},
+    )
+    assert pretrained_resp.status_code == 200
+    assert pretrained_resp.json()["results"] == []
+
+    custom_resp = client.post(
+        "/v1/search",
+        params={"k": 1, "pipeline": "custom"},
+        files={"file": ("q.jpg", b"\x89PNG_same_model_query", "image/jpeg")},
+    )
+    assert custom_resp.status_code == 200
+    assert custom_resp.json()["results"][0]["label"] == "SameModelCustom"
 
 
 def test_search_compare(client):
@@ -402,6 +440,7 @@ def test_get_person_after_enroll(client):
     assert body["label"] == "Charlie"
     assert body["status"] == "active"
     assert len(body["embeddings"]) == 1
+    assert body["embeddings"][0]["pipeline"] == "pretrained"
 
 
 def test_get_person_not_found(client):
@@ -445,6 +484,42 @@ def test_delete_person_removes_results_from_index(client):
     )
     assert search_resp.status_code == 200
     assert search_resp.json()["results"] == []
+
+
+def test_delete_person_rebuilds_only_affected_pipeline(client, db_session):
+    pre_resp = client.post(
+        "/v1/enroll",
+        files={"file": ("pre.jpg", b"\x89PNG_delete_pre", "image/jpeg")},
+        data={"label": "KeepPretrained", "pipeline": "pretrained"},
+    )
+    assert pre_resp.status_code == 200
+
+    custom_resp = client.post(
+        "/v1/enroll",
+        files={"file": ("custom.jpg", b"\x89PNG_delete_custom", "image/jpeg")},
+        data={"label": "DeleteCustom", "pipeline": "custom"},
+    )
+    assert custom_resp.status_code == 200
+    custom_person_id = custom_resp.json()["person_id"]
+
+    delete_resp = client.delete(f"/v1/persons/{custom_person_id}")
+    assert delete_resp.status_code == 200
+
+    log = db_session.execute(
+        select(AuditLog)
+        .where(AuditLog.event_type == "delete_person")
+        .order_by(AuditLog.created_at.desc())
+    ).scalars().first()
+    assert log is not None
+    assert log.details["rebuilt_pipelines"] == ["custom"]
+
+    search_resp = client.post(
+        "/v1/search",
+        params={"k": 1, "pipeline": "pretrained"},
+        files={"file": ("q.jpg", b"\x89PNG_query_after_custom_delete", "image/jpeg")},
+    )
+    assert search_resp.status_code == 200
+    assert search_resp.json()["results"][0]["label"] == "KeepPretrained"
 
 
 def test_delete_person_not_found(client):

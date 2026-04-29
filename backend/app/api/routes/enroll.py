@@ -18,7 +18,11 @@ from app.services.embeddings.interface import (
 from app.services.runtime.pipeline_registry import PipelineRegistry
 from app.services.storage.audit import record_audit_event
 from app.services.storage.repositories import EmbeddingRepo, PersonRepo
-from app.services.storage.uploads import UploadValidationError, allowed_content_types, read_image_upload
+from app.services.storage.uploads import (
+    UploadValidationError,
+    allowed_content_types,
+    read_image_upload,
+)
 
 router = APIRouter()
 
@@ -73,6 +77,7 @@ async def enroll(
     for runtime_key, model_name, embedding in computed:
         embedding_row = embedding_repo.create(
             person_id=person.id,
+            pipeline=runtime_key,
             model=model_name,
             dim=int(embedding.shape[0]),
             vector=embedding.tobytes(),

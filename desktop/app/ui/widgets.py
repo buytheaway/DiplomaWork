@@ -63,7 +63,7 @@ class CollapsibleSection(QFrame):
     def set_expanded(self, expanded: bool) -> None:
         self._expanded = expanded
         self._toggle.setChecked(expanded)
-        arrow = "▾" if expanded else "▸"
+        arrow = "v" if expanded else ">"
         self._toggle.setText(f"{arrow}  {self._title}")
         self._content.setVisible(expanded)
 
@@ -341,7 +341,7 @@ class LiveFaceLine(QFrame):
         det_score = face.get("detection_score")
         quality = str(face.get("quality", "unknown")).lower()
 
-        self.title.setText(f"Face {face_index} · {label}")
+        self.title.setText(f"Face {face_index} - {label}")
         parts = []
         if pipeline and pipeline != "-":
             parts.append(f"Pipeline: {pipeline}")

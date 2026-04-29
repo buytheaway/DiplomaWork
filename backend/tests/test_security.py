@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 
@@ -47,7 +47,7 @@ def test_audit_log_retention_prunes_old_rows(db_session):
         route="/v1/search",
         status_code=200,
         details={"old": True},
-        created_at=datetime.now(timezone.utc) - timedelta(days=90),
+        created_at=datetime.now(UTC) - timedelta(days=90),
     )
     fresh_entry = AuditLog(
         event_type="search",
@@ -80,8 +80,9 @@ def test_index_manager_saves_encrypted_snapshot_files(tmp_path, db_session):
     manager.save_snapshot(db_session)
     db_session.commit()
 
-    snapshot_path = tmp_path / "secure.faiss"
-    map_path = tmp_path / "secure.faiss.map.json"
+    snapshot_path = manager.current_snapshot_path
+    assert snapshot_path is not None
+    map_path = snapshot_path.with_suffix(snapshot_path.suffix + ".map.json")
     assert snapshot_path.read_bytes().startswith(b"ENC1")
     assert map_path.read_bytes().startswith(b"ENC1")
     assert decrypt_snapshot_payload(snapshot_path.read_bytes())
@@ -90,3 +91,35 @@ def test_index_manager_saves_encrypted_snapshot_files(tmp_path, db_session):
     assert reloaded.load_latest_snapshot(db_session) is True
     results = reloaded.search(np.array([1.0, 0.0, 0.0], dtype=np.float32), k=1)
     assert results[0].embedding_id == "vec-1"
+
+
+def test_index_manager_loads_latest_valid_snapshot(tmp_path, db_session):
+    settings = get_settings().model_copy(
+        update={
+            "index_path": str(tmp_path / "rolling.faiss"),
+            "embedding_dim": 3,
+        }
+    )
+    manager = IndexManager(settings)
+    manager.add_embedding("vec-1", np.array([1.0, 0.0, 0.0], dtype=np.float32))
+    manager.save_snapshot(db_session)
+    db_session.commit()
+
+    manager.add_embedding("vec-2", np.array([0.0, 1.0, 0.0], dtype=np.float32))
+    manager.save_snapshot(db_session)
+    db_session.commit()
+
+    reloaded = IndexManager(settings)
+    assert reloaded.load_latest_snapshot(db_session) is True
+    latest_results = reloaded.search(np.array([0.0, 1.0, 0.0], dtype=np.float32), k=1)
+    assert latest_results[0].embedding_id == "vec-2"
+
+    latest_snapshot_path = manager.current_snapshot_path
+    assert latest_snapshot_path is not None
+    latest_map_path = latest_snapshot_path.with_suffix(latest_snapshot_path.suffix + ".map.json")
+    latest_map_path.unlink()
+
+    fallback = IndexManager(settings)
+    assert fallback.load_latest_snapshot(db_session) is True
+    fallback_results = fallback.search(np.array([1.0, 0.0, 0.0], dtype=np.float32), k=1)
+    assert fallback_results[0].embedding_id == "vec-1"

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Iterable
 import uuid
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
@@ -51,13 +52,33 @@ class PersonRepo:
         return True
 
 
+def _matches_snapshot_path(candidate: str, base_path: str) -> bool:
+    candidate_path = Path(candidate)
+    base = Path(base_path)
+    if candidate_path == base:
+        return True
+    return (
+        candidate_path.parent == base.parent
+        and candidate_path.suffix == base.suffix
+        and candidate_path.name.startswith(f"{base.stem}.")
+    )
+
+
 class EmbeddingRepo:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def create(self, person_id: str, model: str, dim: int, vector: bytes) -> Embedding:
+    def create(
+        self,
+        person_id: str,
+        pipeline: str,
+        model: str,
+        dim: int,
+        vector: bytes,
+    ) -> Embedding:
         embedding = Embedding(
             person_id=person_id,
+            pipeline=pipeline,
             model=model,
             dim=dim,
             vector=encrypt_embedding_payload(vector),
@@ -70,13 +91,23 @@ class EmbeddingRepo:
         if embedding is not None:
             embedding.is_active = False
 
-    def get_active_embeddings(self, model: str | None = None) -> list[Embedding]:
+    def get_active_embeddings(
+        self,
+        model: str | None = None,
+        pipeline: str | None = None,
+    ) -> list[Embedding]:
         stmt = select(Embedding).where(Embedding.is_active.is_(True))
         if model is not None:
             stmt = stmt.where(Embedding.model == model)
+        if pipeline is not None:
+            stmt = stmt.where(Embedding.pipeline == pipeline)
         return list(self.db.execute(stmt).scalars().all())
 
-    def get_embeddings_with_person(self, embedding_ids: Iterable[str]) -> list[Embedding]:
+    def get_embeddings_with_person(
+        self,
+        embedding_ids: Iterable[str],
+        pipeline: str | None = None,
+    ) -> list[Embedding]:
         if not embedding_ids:
             return []
         normalized_ids: list[uuid.UUID] = []
@@ -90,6 +121,8 @@ class EmbeddingRepo:
             .where(Embedding.id.in_(normalized_ids))
             .options(joinedload(Embedding.person))
         )
+        if pipeline is not None:
+            stmt = stmt.where(Embedding.pipeline == pipeline)
         return list(self.db.execute(stmt).scalars().all())
 
 
@@ -112,12 +145,20 @@ class IndexSnapshotRepo:
         return self.db.execute(stmt).scalars().first()
 
     def get_latest_for_path(self, path: str) -> IndexSnapshot | None:
+        snapshots = self.list_latest_for_path(path)
+        return snapshots[0] if snapshots else None
+
+    def list_latest_for_path(self, path: str) -> list[IndexSnapshot]:
         stmt = (
             select(IndexSnapshot)
-            .where(IndexSnapshot.path == path)
             .order_by(IndexSnapshot.created_at.desc())
         )
-        return self.db.execute(stmt).scalars().first()
+        snapshots = self.db.execute(stmt).scalars().all()
+        return [
+            snapshot
+            for snapshot in snapshots
+            if _matches_snapshot_path(snapshot.path, path)
+        ]
 
 
 class AuditLogRepo:
@@ -144,7 +185,7 @@ class AuditLogRepo:
         return entry
 
     def prune_older_than(self, retention_days: int) -> int:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
         stmt = delete(AuditLog).where(AuditLog.created_at < cutoff)
         result = self.db.execute(stmt)
         return int(result.rowcount or 0)

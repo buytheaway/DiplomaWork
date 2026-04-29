@@ -65,8 +65,8 @@ def main() -> None:
     # ── Load FAISS index ──────────────────────────────────────────────────
     try:
         import faiss
-    except ImportError:
-        raise SystemExit("faiss-cpu is required: pip install faiss-cpu")
+    except ImportError as exc:
+        raise SystemExit("faiss-cpu is required: pip install faiss-cpu") from exc
 
     logger.info("Loading FAISS index from %s ...", index_path)
     faiss_index = faiss.read_index(str(index_path))
@@ -124,7 +124,7 @@ def main() -> None:
     from app.services.storage.repositories import EmbeddingRepo, PersonRepo  # noqa: E402
 
     settings = get_settings()
-    model_name = f"onnx_w600k_r50"  # model used to generate the embeddings
+    model_name = "onnx_w600k_r50"  # model used to generate the embeddings
 
     logger.info("Writing to database (url=%s) ...", settings.database_url[:40])
 
@@ -156,6 +156,7 @@ def main() -> None:
                 vector = vectors[emb_idx]
                 embedding_repo.create(
                     person_id=person.id,
+                    pipeline=args.pipeline,
                     model=model_name,
                     dim=dim,
                     vector=vector.tobytes(),
@@ -177,7 +178,6 @@ def main() -> None:
     # ── Copy FAISS index to custom pipeline path ──────────────────────────
     import shutil
 
-    custom_index_path = Path(settings.custom_index_path)
     pretrained_index_path = Path(settings.pretrained_index_path)
 
     for target_path in [pretrained_index_path]:
@@ -186,7 +186,6 @@ def main() -> None:
         logger.info("Copied FAISS index to %s", target_path)
 
     # Also write meta.json next to the index
-    import json
     meta_src = index_path.parent / "meta.json"
     if meta_src.exists():
         for target_path in [pretrained_index_path]:
