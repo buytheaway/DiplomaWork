@@ -48,4 +48,4 @@ def save_metrics(output_dir: Path, metrics: dict[str, Any]) -> None:
     output_dir = ensure_dir(output_dir)
     path = output_dir / "metrics.json"
     with path.open("w", encoding="utf-8") as handle:
-        json.dump(metrics, handle, indent=2)
+        json.dump(metrics, handle, indent=2, sort_keys=True)
