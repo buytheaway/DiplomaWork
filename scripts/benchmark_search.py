@@ -31,6 +31,11 @@ def main() -> None:
     args = parser.parse_args()
 
     dataset_dir = Path(args.dataset)
+    if not dataset_dir.exists():
+        raise SystemExit(f"Dataset folder does not exist: {dataset_dir}")
+    if not dataset_dir.is_dir():
+        raise SystemExit(f"Dataset path is not a folder: {dataset_dir}")
+
     images: list[tuple[Path, str]] = []
     for person_dir in sorted(p for p in dataset_dir.iterdir() if p.is_dir()):
         label = person_dir.name
