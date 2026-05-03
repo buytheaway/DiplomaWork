@@ -15,7 +15,6 @@ from app.services.embeddings.interface import (
     create_extractor,
 )
 
-
 # ── factory: dummy ───────────────────────────────────────────────────────────
 
 
@@ -44,7 +43,7 @@ def test_factory_raises_on_unknown_backend():
         with patch.object(settings, "testing", False):
             try:
                 create_extractor(settings)
-                assert False, "Expected ValueError"
+                raise AssertionError("Expected ValueError")
             except ValueError as exc:
                 assert "unknown_xyz" in str(exc)
 

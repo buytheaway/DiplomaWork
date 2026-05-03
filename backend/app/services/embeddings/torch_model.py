@@ -10,7 +10,6 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import torch
 from torch import nn
@@ -25,9 +24,10 @@ from training.models.ir_resnet import (  # noqa: E402
     LAYER_CONFIGS,
     IRBlock,
     ResNetIR,
+)
+from training.models.ir_resnet import (  # noqa: E402
     build_model as _training_build_model,
 )
-
 
 # ── Backend-specific config dataclass (kept for backward-compat) ─────────────
 

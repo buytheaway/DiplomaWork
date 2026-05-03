@@ -249,6 +249,7 @@ def _strip_compare_latency(payload: dict) -> dict:
         row["latency_breakdown"] = None
         comparisons.append(row)
     normalized["comparisons"] = comparisons
+    normalized["fastest_pipeline"] = None
     return normalized
 
 

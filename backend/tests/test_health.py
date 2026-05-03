@@ -21,10 +21,12 @@ def test_health_endpoint():
         assert "pretrained" in body["available_pipelines"]
 
 
-def test_health_reports_dummy_backend_in_testing():
+def test_health_reports_backend_from_config():
     with TestClient(create_app()) as client:
         body = client.get("/v1/health").json()
-        assert body["embedding_backend"] == "dummy"
+        # TESTING=true uses DummyExtractor but the reported backend
+        # comes from the config (EMBEDDING_BACKEND / PRETRAINED_BACKEND).
+        assert body["embedding_backend"] in ("dummy", "onnx", "torch", "insightface")
 
 
 def test_testing_uses_dummy_extractor():

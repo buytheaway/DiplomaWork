@@ -75,7 +75,7 @@ class FaissIndex(VectorIndex):
             distances, ids = self._index.search(vec, k)
             id_map_snapshot = dict(self._id_map)
         results: list[VectorSearchResult] = []
-        for score, vector_id in zip(distances[0], ids[0]):
+        for score, vector_id in zip(distances[0], ids[0], strict=False):
             if vector_id < 0:
                 continue
             embedding_id = id_map_snapshot.get(int(vector_id))

@@ -15,7 +15,7 @@ from app.services.embeddings.interface import (
 )
 from app.services.embeddings.torch_model import ModelConfig, build_model, forward_with_normalization
 from app.services.face.align import AlignmentError, align_with_landmarks
-from app.services.face.detector import OpenCVHaarDetector, InsightFaceDetector, decode_image
+from app.services.face.detector import InsightFaceDetector, OpenCVHaarDetector, decode_image
 from app.services.face.quality import validate_face_quality
 
 

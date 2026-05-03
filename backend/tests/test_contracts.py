@@ -18,7 +18,6 @@ from app.services.embeddings.interface import (
 from app.services.index.faiss_index import FaissIndex
 from app.services.index.index_manager import IndexManager
 
-
 # ── schema validation ────────────────────────────────────────────────────────
 
 
@@ -73,7 +72,7 @@ def test_faiss_index_load_requires_map_file(tmp_path):
     reloaded = FaissIndex(dim=3, index_type="flat", params={}, seed=42)
     try:
         reloaded.load(str(path))
-        assert False, "Expected FileNotFoundError when map sidecar is missing"
+        raise AssertionError("Expected FileNotFoundError when map sidecar is missing")
     except FileNotFoundError:
         pass
 
@@ -88,7 +87,7 @@ def test_faiss_index_load_rejects_map_mismatch(tmp_path):
     reloaded = FaissIndex(dim=3, index_type="flat", params={}, seed=42)
     try:
         reloaded.load(str(path))
-        assert False, "Expected ValueError when map size does not match index size"
+        raise AssertionError("Expected ValueError when map size does not match index size")
     except ValueError:
         pass
 
@@ -136,7 +135,7 @@ def test_dummy_extractor_rejects_empty_bytes():
     ext = DummyEmbeddingExtractor()
     try:
         ext.extract_embedding(b"")
-        assert False, "Expected InvalidImageError"
+        raise AssertionError("Expected InvalidImageError")
     except InvalidImageError:
         pass
 

@@ -62,7 +62,7 @@ def extract_embedding_from_image(img: Image.Image, config) -> tuple[np.ndarray, 
     return embedding, embedding_normalized, checkpoint
 
 
-def test_custom_face(image_path: str) -> dict:
+def run_custom_face(image_path: str) -> dict:
     """Test custom face against dataset"""
     config = load_config("training/config.yaml")
     
@@ -92,7 +92,7 @@ def test_custom_face(image_path: str) -> dict:
     print("\n⚙️ Extracting embedding from test face...")
     try:
         embedding, embedding_norm, checkpoint = extract_embedding_from_image(test_img, config)
-        print(f"✅ Embedding extracted successfully!")
+        print("✅ Embedding extracted successfully!")
         print(f"   Checkpoint: {checkpoint.name}")
         print(f"   Embedding dimension: {embedding.shape[0]}")
         print(f"   Embedding L2 norm: {np.linalg.norm(embedding):.6f}")
@@ -214,4 +214,4 @@ if __name__ == "__main__":
         sys.exit(1)
     
     image_path = sys.argv[1]
-    test_custom_face(image_path)
+    run_custom_face(image_path)
