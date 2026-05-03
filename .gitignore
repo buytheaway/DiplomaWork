@@ -59,7 +59,9 @@ training/checkpoints/
 training/config.eval.yaml
 tmp/
 backend/tmp/
-docs/
+docs/*
+!docs/benchmarks/
+!docs/benchmarks/**
 
 # Logs
 backend/logs/
