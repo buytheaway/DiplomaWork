@@ -117,6 +117,10 @@ class Settings(BaseSettings):
     audit_retention_days: int = Field(30, alias="AUDIT_RETENTION_DAYS")
     enable_search_audit: bool = Field(True, alias="ENABLE_SEARCH_AUDIT")
     enable_compare_audit: bool = Field(True, alias="ENABLE_COMPARE_AUDIT")
+    rate_limit_enabled: bool = Field(False, alias="RATE_LIMIT_ENABLED")
+    rate_limit_search_per_min: int = Field(60, alias="RATE_LIMIT_SEARCH_PER_MIN")
+    rate_limit_enroll_per_min: int = Field(20, alias="RATE_LIMIT_ENROLL_PER_MIN")
+    rate_limit_admin_per_min: int = Field(10, alias="RATE_LIMIT_ADMIN_PER_MIN")
 
     # ── runtime ──────────────────────────────────────────────────────────
     auto_save_index: bool = Field(True, alias="AUTO_SAVE_INDEX")

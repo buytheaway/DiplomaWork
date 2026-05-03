@@ -3,17 +3,69 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from app.api.deps import get_db
 from app.core.config import get_settings
 from app.db.models import AuditLog
+from app.main import create_app
+from app.security import auth as auth_module
 from app.security.auth import classify_api_key
 from app.security.crypto import (
     decrypt_embedding_payload,
     decrypt_snapshot_payload,
     encrypt_embedding_payload,
 )
+from app.security.rate_limit import rate_limit_rule_for_request
 from app.services.index.index_manager import IndexManager
 from app.services.storage.repositories import AuditLogRepo
+
+
+def _make_rate_limited_client(
+    db_session: Session,
+    monkeypatch,
+    *,
+    enabled: bool = True,
+    search_limit: int = 100,
+    enroll_limit: int = 100,
+    admin_limit: int = 100,
+    api_key: str = "operator-key",
+    admin_api_key: str = "admin-key",
+) -> TestClient:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "rate_limit_enabled", enabled)
+    monkeypatch.setattr(settings, "rate_limit_search_per_min", search_limit)
+    monkeypatch.setattr(settings, "rate_limit_enroll_per_min", enroll_limit)
+    monkeypatch.setattr(settings, "rate_limit_admin_per_min", admin_limit)
+    monkeypatch.setattr(settings, "api_key", api_key)
+    monkeypatch.setattr(settings, "admin_api_key", admin_api_key)
+
+    app = create_app()
+
+    def _override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_get_db
+    return TestClient(app)
+
+
+def _post_search(client: TestClient, api_key: str = "operator-key", payload: bytes = b"query"):
+    return client.post(
+        "/v1/search",
+        headers={"X-API-Key": api_key},
+        params={"k": 1},
+        files={"file": ("q.jpg", b"\x89PNG_" + payload, "image/jpeg")},
+    )
+
+
+def _post_enroll(client: TestClient, api_key: str = "operator-key", payload: bytes = b"enroll"):
+    return client.post(
+        "/v1/enroll",
+        headers={"X-API-Key": api_key},
+        files={"file": ("face.jpg", b"\x89PNG_" + payload, "image/jpeg")},
+        data={"label": "RateLimit"},
+    )
 
 
 def test_classify_api_key_operator_and_admin():
@@ -26,6 +78,106 @@ def test_classify_api_key_operator_and_admin():
     assert classify_api_key(settings, "operator-key") == "operator"
     assert classify_api_key(settings, "admin-key") == "admin"
     assert classify_api_key(settings, "wrong") is None
+
+
+def test_classify_api_key_missing_key_fails():
+    settings = get_settings().model_copy(
+        update={
+            "api_key": "operator-key",
+            "admin_api_key": "admin-key",
+        }
+    )
+
+    assert classify_api_key(settings, "") is None
+
+
+def test_classify_api_key_uses_timing_safe_compare(monkeypatch):
+    settings = get_settings().model_copy(
+        update={
+            "api_key": "operator-key",
+            "admin_api_key": "admin-key",
+        }
+    )
+    calls: list[tuple[str, str]] = []
+
+    def fake_compare_digest(candidate: str, expected: str) -> bool:
+        calls.append((candidate, expected))
+        return candidate == expected
+
+    monkeypatch.setattr(auth_module.secrets, "compare_digest", fake_compare_digest)
+
+    assert classify_api_key(settings, "operator-key") == "operator"
+    assert ("operator-key", "admin-key") in calls
+    assert ("operator-key", "operator-key") in calls
+
+
+def test_search_rate_limit_returns_429_after_configured_limit(db_session, monkeypatch):
+    client = _make_rate_limited_client(db_session, monkeypatch, search_limit=1)
+    with client:
+        assert _post_search(client, payload=b"first").status_code == 200
+        limited = _post_search(client, payload=b"second")
+
+    assert limited.status_code == 429
+    assert limited.json()["detail"] == "Rate limit exceeded. Try again later."
+    assert "Retry-After" in limited.headers
+
+
+def test_enroll_rate_limit_returns_429_after_configured_limit(db_session, monkeypatch):
+    client = _make_rate_limited_client(db_session, monkeypatch, enroll_limit=1)
+    with client:
+        assert _post_enroll(client, payload=b"first").status_code == 200
+        limited = _post_enroll(client, payload=b"second")
+
+    assert limited.status_code == 429
+    assert limited.json()["detail"] == "Rate limit exceeded. Try again later."
+
+
+def test_disabled_rate_limiter_does_not_affect_requests(db_session, monkeypatch):
+    client = _make_rate_limited_client(
+        db_session,
+        monkeypatch,
+        enabled=False,
+        search_limit=1,
+    )
+    with client:
+        assert _post_search(client, payload=b"first").status_code == 200
+        assert _post_search(client, payload=b"second").status_code == 200
+
+
+def test_rate_limit_buckets_are_separate_for_valid_api_keys(db_session, monkeypatch):
+    client = _make_rate_limited_client(db_session, monkeypatch, search_limit=1)
+    with client:
+        assert _post_search(client, api_key="operator-key", payload=b"operator").status_code == 200
+        assert _post_search(client, api_key="operator-key", payload=b"operator-2").status_code == 429
+        assert _post_search(client, api_key="admin-key", payload=b"admin").status_code == 200
+
+
+def test_rate_limit_does_not_log_api_key(db_session, monkeypatch, caplog):
+    api_key = "operator-secret-not-for-logs"
+    client = _make_rate_limited_client(
+        db_session,
+        monkeypatch,
+        search_limit=1,
+        api_key=api_key,
+    )
+    with client:
+        assert _post_search(client, api_key=api_key, payload=b"first").status_code == 200
+        limited = _post_search(client, api_key=api_key, payload=b"second")
+
+    assert limited.status_code == 429
+    assert api_key not in limited.text
+    assert api_key not in caplog.text
+
+
+def test_rate_limit_rules_cover_sensitive_routes():
+    settings = get_settings()
+
+    assert rate_limit_rule_for_request(settings, "POST", "/v1/search").category == "search"
+    assert rate_limit_rule_for_request(settings, "POST", "/v1/search/compare").category == "search"
+    assert rate_limit_rule_for_request(settings, "POST", "/v1/enroll").category == "enroll"
+    assert rate_limit_rule_for_request(settings, "POST", "/v1/index/rebuild").category == "admin"
+    assert rate_limit_rule_for_request(settings, "DELETE", "/v1/persons/person-1").category == "admin"
+    assert rate_limit_rule_for_request(settings, "GET", "/v1/health") is None
 
 
 def test_embedding_payload_roundtrip():

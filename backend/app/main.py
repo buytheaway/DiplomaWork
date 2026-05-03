@@ -19,6 +19,11 @@ from app.api.routes import enroll, health, index, persons, search
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.security.auth import classify_api_key
+from app.security.rate_limit import (
+    InMemoryRateLimiter,
+    rate_limit_identity,
+    rate_limit_rule_for_request,
+)
 from app.services.runtime.pipeline_registry import PipelineRegistry
 from app.services.storage.repositories import AuditLogRepo
 
@@ -102,6 +107,31 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    if settings.rate_limit_enabled:
+        rate_limiter = InMemoryRateLimiter()
+
+        @app.middleware("http")
+        async def _rate_limit(request: Request, call_next):
+            rule = rate_limit_rule_for_request(
+                settings,
+                request.method,
+                request.url.path,
+            )
+            if rule is not None:
+                identity = rate_limit_identity(settings, request)
+                decision = rate_limiter.check(
+                    identity=identity,
+                    category=rule.category,
+                    limit=rule.limit,
+                )
+                if not decision.allowed:
+                    return JSONResponse(
+                        status_code=429,
+                        content={"detail": "Rate limit exceeded. Try again later."},
+                        headers={"Retry-After": str(decision.retry_after_seconds)},
+                    )
+            return await call_next(request)
 
     if settings.api_key and not settings.testing:
         @app.middleware("http")

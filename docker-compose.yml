@@ -1,16 +1,17 @@
 services:
   db:
     image: postgres:15
+    # Local development database only. Load values with: docker compose --env-file .env.docker up
     environment:
-      POSTGRES_DB: biometric
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-biometric}
+      POSTGRES_USER: ${POSTGRES_USER:-REPLACE_WITH_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-REPLACE_WITH_LOCAL_DEV_POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 8

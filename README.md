@@ -48,6 +48,20 @@ Before the first local run, create your local backend config:
 Copy-Item .env.local.example .env
 ```
 
+Then replace every `REPLACE_WITH_*` value in `.env`. The example values are placeholders and must not be used in production or in demos with real biometric data.
+
+Generate API keys:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Generate encryption keys:
+
+```powershell
+python -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+```
+
 ### 1. Start the backend
 
 ```powershell
@@ -113,8 +127,10 @@ Manual Docker run:
 
 ```powershell
 if (-not (Test-Path .env.docker)) { Copy-Item .env.docker.example .env.docker }
-docker compose up --build
+docker compose --env-file .env.docker up --build
 ```
+
+Docker Compose is configured for local development only. Replace the `.env.docker` placeholders, including the Postgres password and backend keys, before running with any real biometric data.
 
 Useful URLs:
 
@@ -171,6 +187,8 @@ The backend does not store raw photos by default. It stores:
 - FAISS index loading is strict: a missing `.map.json` sidecar is treated as a broken index state
 - operational routes require `API_KEY`
 - delete and rebuild require `ADMIN_API_KEY`
+- in-memory rate limiting protects search, compare, enroll, rebuild, and delete routes; configure it with `RATE_LIMIT_*`
+- distributed deployments need Redis or another external rate limiter because in-memory buckets are per process
 
 ## Main API routes
 
