@@ -109,6 +109,54 @@ class IndexManager:
     def _snapshot_files_exist(self, path: Path) -> bool:
         return path.exists() and self._map_path_for(path).exists()
 
+    def _snapshot_path_belongs_to_index(self, path: Path) -> bool:
+        return (
+            path.parent == self.index_path.parent
+            and path.suffix == self.index_path.suffix
+            and (
+                path == self.index_path
+                or path.name.startswith(f"{self.index_path.stem}.")
+            )
+        )
+
+    def _prune_old_snapshots(self, db: Session) -> None:
+        retention = self.settings.index_snapshot_retention
+        if retention <= 0:
+            return
+
+        repo = IndexSnapshotRepo(db)
+        snapshots = repo.list_latest_for_path(str(self.index_path))
+        for snapshot in snapshots[retention:]:
+            snapshot_path = Path(snapshot.path)
+            if snapshot_path == self.current_snapshot_path:
+                continue
+            if not self._snapshot_path_belongs_to_index(snapshot_path):
+                continue
+
+            files_to_delete = [snapshot_path, self._map_path_for(snapshot_path)]
+            can_delete_record = True
+            deleted_filenames: list[str] = []
+            for file_path in files_to_delete:
+                try:
+                    if file_path.exists():
+                        file_path.unlink()
+                        deleted_filenames.append(file_path.name)
+                except OSError as exc:
+                    can_delete_record = False
+                    self._logger.warning(
+                        "Failed to prune index snapshot file %s: %s",
+                        file_path.name,
+                        exc,
+                    )
+
+            if can_delete_record:
+                repo.delete(snapshot)
+                if deleted_filenames:
+                    self._logger.info(
+                        "Pruned index snapshot files: %s",
+                        ", ".join(deleted_filenames),
+                    )
+
     def _save_index_files(self) -> Path:
         snapshot_path = self._next_snapshot_path()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -184,8 +232,10 @@ class IndexManager:
             path=str(snapshot_path),
             embeddings_count=self._index.count(),
         )
+        db.flush()
         self.last_snapshot_id = str(snapshot.id)
         self.current_snapshot_path = snapshot_path
+        self._prune_old_snapshots(db)
 
     # ── core operations ──────────────────────────────────────────────────
 

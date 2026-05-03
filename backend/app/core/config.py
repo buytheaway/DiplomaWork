@@ -99,6 +99,7 @@ class Settings(BaseSettings):
     ivfpq_nlist: int = Field(100, alias="IVFPQ_NLIST")
     ivfpq_m: int = Field(16, alias="IVFPQ_M")
     ivfpq_nbits: int = Field(8, alias="IVFPQ_NBITS")
+    index_snapshot_retention: int = Field(3, alias="INDEX_SNAPSHOT_RETENTION")
 
     # ── security / CORS ──────────────────────────────────────────────────
     api_key: str = Field("", alias="API_KEY")

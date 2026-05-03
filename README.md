@@ -183,12 +183,14 @@ The backend does not store raw photos by default. It stores:
 ## Runtime notes
 
 - each pipeline has its own FAISS index
+- old encrypted index snapshots are pruned by `INDEX_SNAPSHOT_RETENTION` to reduce disk growth
 - deleting a person rebuilds the affected pipeline index to keep search results consistent
 - FAISS index loading is strict: a missing `.map.json` sidecar is treated as a broken index state
 - operational routes require `API_KEY`
 - delete and rebuild require `ADMIN_API_KEY`
 - in-memory rate limiting protects search, compare, enroll, rebuild, and delete routes; configure it with `RATE_LIMIT_*`
 - distributed deployments need Redis or another external rate limiter because in-memory buckets are per process
+- index snapshots contain biometric template index data, even when encrypted; protect backups and filesystem access carefully
 
 ## Main API routes
 

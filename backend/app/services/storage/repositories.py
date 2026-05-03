@@ -140,6 +140,9 @@ class IndexSnapshotRepo:
         self.db.add(snapshot)
         return snapshot
 
+    def delete(self, snapshot: IndexSnapshot) -> None:
+        self.db.delete(snapshot)
+
     def get_latest(self) -> IndexSnapshot | None:
         stmt = select(IndexSnapshot).order_by(IndexSnapshot.created_at.desc())
         return self.db.execute(stmt).scalars().first()
