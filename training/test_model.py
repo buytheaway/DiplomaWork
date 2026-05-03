@@ -6,18 +6,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
 import torch
-from torch.utils.data import DataLoader
-from torchvision import transforms
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from training.models.ir_resnet import build_model
-from training.utils import load_config, set_seed
+from training.utils import load_config
 
 
 class TestModelArchitecture:

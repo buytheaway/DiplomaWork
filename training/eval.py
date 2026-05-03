@@ -80,7 +80,7 @@ def main() -> None:
     num_classes = int(labels.max()) + 1
     centroids = np.zeros((num_classes, embeddings.shape[1]), dtype=np.float32)
     counts = np.zeros((num_classes,), dtype=np.int32)
-    for emb, label in zip(embeddings, labels):
+    for emb, label in zip(embeddings, labels, strict=False):
         centroids[label] += emb
         counts[label] += 1
     centroids /= np.maximum(counts[:, None], 1)

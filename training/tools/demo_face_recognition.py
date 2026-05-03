@@ -84,7 +84,7 @@ def main():
     print("\n⚙️ Extracting embedding from test face...")
     embedding, embedding_norm, checkpoint = extract_embedding_from_image(test_img, config)
     
-    print(f"✅ Embedding extracted successfully!")
+    print("✅ Embedding extracted successfully!")
     print(f"   Checkpoint: {Path(checkpoint).name}")
     print(f"   Embedding dimension: {embedding.shape[0]}")
     print(f"   Embedding L2 norm: {np.linalg.norm(embedding):.4f}")

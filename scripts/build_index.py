@@ -5,9 +5,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT / "backend"))
 
-from app.core.config import get_settings
-from app.db.session import SessionLocal
-from app.services.index.index_manager import IndexManager
+from app.core.config import get_settings  # noqa: E402
+from app.db.session import SessionLocal  # noqa: E402
+from app.services.index.index_manager import IndexManager  # noqa: E402
 
 
 def main() -> None:

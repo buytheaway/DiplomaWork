@@ -143,7 +143,7 @@ def main():
     embedding = result["embedding"]
     checkpoint = result["checkpoint"]
     
-    print(f"✅ Embedding extracted successfully!")
+    print("✅ Embedding extracted successfully!")
     print(f"   Checkpoint: {Path(checkpoint).name}")
     print(f"   Embedding shape: {embedding.shape}")
     print(f"   Embedding norm: {np.linalg.norm(embedding):.4f}")

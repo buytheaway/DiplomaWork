@@ -1,10 +1,9 @@
 """
 Prepare digiface1m dataset for training
 """
-from pathlib import Path
 import zipfile
-import shutil
-from tqdm import tqdm
+from pathlib import Path
+
 
 def prepare_digiface1m():
     """Extract and organize digiface1m dataset"""
@@ -28,13 +27,13 @@ def prepare_digiface1m():
     images_dir.mkdir(exist_ok=True)
     
     # Extract zip files
-    print(f"\n🔓 Extracting zip files...")
+    print("\n🔓 Extracting zip files...")
     for zf in zip_files[:3]:  # Extract first 3 zips for now
         print(f"  Extracting {zf.name}...")
         try:
             with zipfile.ZipFile(zf, 'r') as zip_ref:
                 zip_ref.extractall(images_dir)
-            print(f"    ✅ Done")
+            print("    ✅ Done")
         except Exception as e:
             print(f"    ❌ Error: {e}")
     
@@ -45,15 +44,15 @@ def prepare_digiface1m():
         person_id = img.parent.name
         persons.add(person_id)
     
-    print(f"\n📊 Dataset Statistics:")
+    print("\n📊 Dataset Statistics:")
     print(f"   Total images: {len(all_images)}")
     print(f"   Unique persons: {len(persons)}")
     
     if len(all_images) > 0:
-        print(f"\n✅ Dataset ready for training!")
+        print("\n✅ Dataset ready for training!")
         return True
     else:
-        print(f"\n❌ No images extracted")
+        print("\n❌ No images extracted")
         return False
 
 

@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-import io
-import base64
 
 import numpy as np
 import torch
@@ -127,7 +125,7 @@ def test_face_from_image(img: Image.Image) -> dict:
     print("\n📸 Processing face...")
     embedding, embedding_norm, checkpoint = extract_embedding_from_image(img, config)
     
-    print(f"✅ Embedding extracted successfully!")
+    print("✅ Embedding extracted successfully!")
     print(f"   Checkpoint: {Path(checkpoint).name}")
     print(f"   Embedding shape: {embedding.shape}")
     print(f"   Embedding norm: {np.linalg.norm(embedding):.4f}")

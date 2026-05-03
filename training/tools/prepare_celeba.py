@@ -8,7 +8,6 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-
 DEFAULT_OUTPUT = Path("datasets/celeba_faces")
 
 

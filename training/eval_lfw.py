@@ -14,12 +14,24 @@ if str(ROOT) not in sys.path:
 import numpy as np
 import torch
 from PIL import Image
-from sklearn.metrics import roc_auc_score, roc_curve
 from torchvision import transforms
 from tqdm import tqdm
 
 from training.models.ir_resnet import build_model
 from training.utils import load_config, set_seed
+from training.verification_metrics import (
+    best_accuracy_threshold,
+    equal_error_rate,
+    roc_curve_points,
+    tar_at_far,
+)
+
+try:
+    from sklearn.metrics import roc_auc_score
+    from sklearn.metrics import roc_curve as sklearn_roc_curve
+except ImportError:  # pragma: no cover - depends on optional local environment
+    roc_auc_score = None
+    sklearn_roc_curve = None
 
 
 def _load_pairs(pairs_path: Path) -> tuple[int, list[tuple[str, int, str, int]]]:
@@ -71,36 +83,6 @@ def _extract_embedding(
     return vector
 
 
-def _find_best_threshold(
-    similarities: np.ndarray,
-    labels: np.ndarray,
-    thresholds: np.ndarray,
-) -> tuple[float, float]:
-    best_threshold = 0.0
-    best_accuracy = -1.0
-    for threshold in thresholds:
-        predictions = (similarities >= threshold).astype(np.int32)
-        accuracy = float((predictions == labels).mean())
-        if accuracy > best_accuracy:
-            best_accuracy = accuracy
-            best_threshold = float(threshold)
-    return best_threshold, best_accuracy
-
-
-def _threshold_for_far(
-    similarities: np.ndarray,
-    labels: np.ndarray,
-    target_far: float,
-) -> float:
-    negative_scores = np.sort(similarities[labels == 0])
-    if len(negative_scores) == 0:
-        return 1.0
-
-    rank = int(np.ceil((1.0 - target_far) * len(negative_scores))) - 1
-    rank = min(max(rank, 0), len(negative_scores) - 1)
-    return float(negative_scores[rank])
-
-
 def evaluate_lfw(
     model: torch.nn.Module,
     lfw_dir: Path,
@@ -146,6 +128,7 @@ def evaluate_lfw(
     fold_metrics: list[dict] = []
     accuracies: list[float] = []
     best_thresholds: list[float] = []
+    target_fars = [1e-1, 1e-2, 1e-3, 1e-4]
     tar_at_far_values = {
         "TAR@FAR=0.1": [],
         "TAR@FAR=0.01": [],
@@ -164,7 +147,8 @@ def evaluate_lfw(
         test_scores = scores[test_mask]
         test_targets = targets[test_mask]
 
-        best_threshold, _ = _find_best_threshold(train_scores, train_targets, thresholds)
+        best_threshold_result = best_accuracy_threshold(train_scores, train_targets, thresholds)
+        best_threshold = best_threshold_result["threshold"]
         test_predictions = (test_scores >= best_threshold).astype(np.int32)
         test_accuracy = float((test_predictions == test_targets).mean())
 
@@ -174,12 +158,13 @@ def evaluate_lfw(
             "threshold": round(best_threshold, 4),
         }
 
-        for far in [1e-1, 1e-2, 1e-3, 1e-4]:
-            far_threshold = _threshold_for_far(train_scores, train_targets, far)
+        for far in target_fars:
+            far_selection = tar_at_far(train_scores, train_targets, [far], thresholds)[0]
+            far_threshold = far_selection["threshold"]
             positive_test_scores = test_scores[test_targets == 1]
             tar = (
                 float((positive_test_scores >= far_threshold).mean())
-                if len(positive_test_scores) > 0
+                if len(positive_test_scores) > 0 and np.isfinite(far_threshold)
                 else 0.0
             )
             key = f"TAR@FAR={far}"
@@ -187,6 +172,8 @@ def evaluate_lfw(
             fold_result[key] = {
                 "tar": round(tar, 4),
                 "threshold": round(far_threshold, 4),
+                "train_far": round(far_selection["far"], 6),
+                "train_frr": round(far_selection["frr"], 6),
             }
 
         fold_metrics.append(fold_result)
@@ -194,12 +181,19 @@ def evaluate_lfw(
         best_thresholds.append(best_threshold)
 
     try:
+        if roc_auc_score is None or sklearn_roc_curve is None:
+            raise RuntimeError("scikit-learn metrics are unavailable")
         auc = float(roc_auc_score(targets, scores))
-        fpr, tpr, _ = roc_curve(targets, scores)
+        fpr, tpr, _ = sklearn_roc_curve(targets, scores)
         roc_data = {"fpr": fpr.tolist(), "tpr": tpr.tolist()}
     except Exception:
         auc = -1.0
         roc_data = {}
+
+    eer_result = equal_error_rate(scores, targets, thresholds)
+    global_best_threshold = best_accuracy_threshold(scores, targets, thresholds)
+    global_tar_at_far = tar_at_far(scores, targets, target_fars, thresholds)
+    far_frr_curve_points = roc_curve_points(scores, targets, thresholds, max_points=401)
 
     tar_summary = {}
     for key, values in tar_at_far_values.items():
@@ -216,8 +210,36 @@ def evaluate_lfw(
         "accuracy": round(float(np.mean(accuracies)) if accuracies else 0.0, 4),
         "accuracy_std": round(float(np.std(accuracies)) if accuracies else 0.0, 4),
         "best_threshold": round(float(np.mean(best_thresholds)) if best_thresholds else 0.0, 4),
+        "eer": round(eer_result["eer"], 6),
+        "eer_threshold": round(eer_result["threshold"], 6),
         "auc": round(auc, 4),
+        "selected_thresholds": {
+            "mean_fold_best_accuracy": round(
+                float(np.mean(best_thresholds)) if best_thresholds else 0.0,
+                6,
+            ),
+            "global_best_accuracy": {
+                "threshold": round(global_best_threshold["threshold"], 6),
+                "accuracy": round(global_best_threshold["accuracy"], 6),
+            },
+            "eer": round(eer_result["threshold"], 6),
+            "tar_at_far": {
+                f"{item['target_far']:.4g}": round(item["threshold"], 6)
+                for item in global_tar_at_far
+            },
+        },
         "tar_at_far": tar_summary,
+        "tar_at_far_global": [
+            {
+                "target_far": item["target_far"],
+                "tar": round(item["tar"], 6),
+                "threshold": round(item["threshold"], 6),
+                "far": round(item["far"], 6),
+                "frr": round(item["frr"], 6),
+            }
+            for item in global_tar_at_far
+        ],
+        "far_frr_curve_points": far_frr_curve_points,
         "folds": fold_metrics,
         "roc_data": roc_data,
     }
@@ -265,6 +287,8 @@ def main() -> None:
     print(f"  Negative pairs:   {results['num_negative']}")
     print(f"  Accuracy:         {results['accuracy']:.4f} +/- {results['accuracy_std']:.4f}")
     print(f"  Mean threshold:   {results['best_threshold']:.4f}")
+    print(f"  EER:              {results['eer']:.4f}")
+    print(f"  EER threshold:    {results['eer_threshold']:.4f}")
     print(f"  AUC:              {results['auc']:.4f}")
     print()
     for key, val in results["tar_at_far"].items():

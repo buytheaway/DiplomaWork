@@ -1,11 +1,11 @@
 """
 Automatically extract and prepare digiface1m dataset
 """
+import shutil
 import zipfile
 from pathlib import Path
+
 from tqdm import tqdm
-import os
-import shutil
 
 
 def extract_dataset():
@@ -37,14 +37,11 @@ def extract_dataset():
         
         try:
             with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-                # Get list of files
-                file_list = zip_ref.namelist()
-                
                 # Extract with progress bar
                 for file_info in tqdm(zip_ref.infolist(), desc="   Extracting", leave=False):
                     zip_ref.extract(file_info, images_dir)
             
-            print(f"   ✅ Extraction completed")
+            print("   ✅ Extraction completed")
             
         except Exception as e:
             print(f"   ❌ Error: {e}")
@@ -73,7 +70,7 @@ def extract_dataset():
         
         # Show distribution
         sorted_persons = sorted(person_dirs.items(), key=lambda x: x[1], reverse=True)
-        print(f"\nTop 10 persons by image count:")
+        print("\nTop 10 persons by image count:")
         for person_id, count in sorted_persons[:10]:
             print(f"   Person {person_id}: {count} images")
     
@@ -138,7 +135,7 @@ def prepare_train_val_split(train_split=0.8):
             shutil.copy2(img, val_person_dir / img.name)
             total_val += 1
     
-    print(f"\n✅ Dataset split complete!")
+    print("\n✅ Dataset split complete!")
     print(f"   Train images: {total_train}")
     print(f"   Val images: {total_val}")
     print(f"   Persons: {len(person_dirs)}")
@@ -146,7 +143,6 @@ def prepare_train_val_split(train_split=0.8):
 
 
 if __name__ == "__main__":
-    import sys
     
     # Extract dataset
     num_images, num_persons = extract_dataset()

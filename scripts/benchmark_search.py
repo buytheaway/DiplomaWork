@@ -3,7 +3,7 @@ import csv
 import json
 import random
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -133,7 +133,7 @@ def main() -> None:
         "latency_p99_ms": float(np.percentile(latencies_np, 99)),
         "latency_avg_ms": float(np.mean(latencies_np)),
         "qps": float(len(latencies) / total_time) if total_time > 0 else 0.0,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "seed": args.seed,
     }
 

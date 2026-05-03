@@ -25,10 +25,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-import numpy as np
-import torch
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
 
-from training.models.ir_resnet import build_model
+from training.models.ir_resnet import build_model  # noqa: E402
 
 
 def positive_int(value: str) -> int:
@@ -111,7 +111,7 @@ def validate_onnx(
     onnx_out = sess.run(None, {"input": dummy.numpy()})[0]
 
     max_diff = float(np.max(np.abs(torch_out - onnx_out)))
-    print(f"\n✓ Validation:")
+    print("\n✓ Validation:")
     print(f"  Max absolute diff: {max_diff:.8f}")
     if max_diff < 1e-4:
         print("  Status: PASS — outputs match within tolerance")
