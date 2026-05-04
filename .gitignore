@@ -62,6 +62,8 @@ backend/tmp/
 docs/*
 !docs/benchmarks/
 !docs/benchmarks/**
+!docs/defense/
+!docs/defense/**
 
 # Logs
 backend/logs/
