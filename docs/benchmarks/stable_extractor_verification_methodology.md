@@ -59,8 +59,8 @@ FAR, FRR, EER, TAR@FAR, and threshold values must not be claimed in diploma
 documentation unless `scripts/evaluate_verification_pairs.py` or another real
 labeled verification evaluation was actually run on the target dataset.
 
-Do not claim that a model is accurate, production-ready, optimal, or low-error
-unless those claims are supported by recorded evaluation output.
+Do not claim that a model is accurate, deployment-validated, optimal, or
+low-error unless those claims are supported by recorded evaluation output.
 
 ## Example ONNX Command
 

@@ -18,7 +18,7 @@ The baseline pipeline is the stable operational reference.
 
 ### Custom
 
-The custom branch is the comparative and research branch.
+The custom branch is the comparative and research branch. It should be described as experimental until valid training logs and labeled verification results are available.
 
 ### Compare
 
@@ -55,4 +55,5 @@ Safe defense wording:
 
 - the baseline pipeline is stable and used as the operational reference;
 - the custom branch exists for comparative and research tasks;
-- the architecture supports multiple embedding sources and multiple runtime paths.
+- the architecture supports multiple embedding sources and multiple runtime paths;
+- custom model quality and stable ONNX biometric accuracy require real labeled evaluation before numerical claims.

@@ -1,0 +1,159 @@
+READY CONTEXT FOR GPT / DIPLOMA WRITING
+
+Below is a ready context that can be sent to another GPT/chat model to generate a diploma document, explanatory note, chapter draft, or report.
+
+START OF CONTEXT
+
+Project name:
+Fast Biometric Face Search
+
+Project type:
+Diploma project on face-based biometric identification and search.
+
+Main goal:
+To design and implement a modular system for biometric face search that can:
+- enroll a person by image
+- search similar persons by image
+- compare two inference pipelines
+- operate through a desktop client
+- support reproducible experiments and benchmarking
+
+Technology stack:
+- Python 3.11+
+- FastAPI
+- SQLAlchemy 2.0
+- PostgreSQL / SQLite
+- Alembic
+- FAISS
+- PyTorch
+- ONNX Runtime
+- OpenCV
+- PySide6
+- Docker Compose
+- pytest
+
+General architecture:
+The project is divided into backend, desktop client, training subsystem, runtime models, and deployment artifacts.
+The backend handles API requests, face detection, embedding extraction, vector search, and metadata storage.
+The desktop client is the operator interface.
+The training subsystem is used for custom model development and experiments.
+
+Important design rule:
+The system does not store raw input face images by default.
+It stores only:
+- person metadata
+- embeddings
+- index snapshots
+
+Core system idea:
+An input image is decoded, faces are detected, embeddings are extracted, then FAISS performs nearest-neighbor search over stored vectors.
+
+Pipelines:
+The project includes two logical pipelines.
+
+1. Pretrained pipeline:
+- based on ONNX runtime
+- uses buffalo_l assets
+- acts as the stable baseline
+
+2. Custom pipeline:
+- represents an experimental PyTorch research branch
+- used for comparison infrastructure and future model evaluation
+
+Important note for writing:
+For the diploma narrative, the project should be described as combining:
+- a pretrained baseline model
+- an experimental custom PyTorch research branch
+
+Custom model wording:
+The repository contains custom training, evaluation, and export tooling. The custom PyTorch branch should be presented as an experimental research extension, not as a validated biometric model.
+
+Important clarification for formal writing:
+If needed, phrase it carefully like this:
+"In addition to the pretrained baseline, the project includes an experimental custom PyTorch branch. It can be used for future comparative analysis after valid training logs and labeled verification results are available."
+
+Why two models are needed:
+- the pretrained model provides a stable benchmark
+- the custom branch demonstrates extensibility for independent development and comparative research
+
+Backend functions:
+- health monitoring
+- enroll
+- search
+- compare both pipelines
+- person list and person detail
+- index stats and rebuild
+
+Desktop functions:
+- dashboard
+- image-based search
+- enroll
+- compare mode
+- database browsing
+- logs and stats
+- live webcam search
+- live webcam compare
+
+Face processing policy:
+- enroll requires exactly one face
+- search supports multiple faces
+- invalid images return 400
+- no face or multiple faces in enroll return 422
+
+Indexing:
+The system uses FAISS for similarity search and stores metadata in a relational database.
+This gives a clear separation between persistent storage and fast vector search.
+
+Database model:
+- persons
+- embeddings
+- index_snapshots
+
+Training subsystem:
+The custom model training branch is implemented with PyTorch.
+It includes:
+- IR-style ResNet architecture
+- ArcFace loss
+- training loop
+- evaluation scripts
+- dataset preparation scripts
+
+Research significance:
+The project is not only an ML model, but a complete applied biometric system with:
+- backend
+- desktop UI
+- vector index
+- database
+- training pipeline
+- runtime comparison
+
+Practical significance:
+The system can be used as a prototype for:
+- access control
+- identity verification
+- archive search
+- operator-assisted recognition
+
+Limitations:
+- direct full integration of the legacy deploy/model_bundle artifact into the active runtime still requires additional technical alignment
+- webcam mode is near real-time, not full continuous high-FPS recognition
+- the pretrained branch is currently the most stable runtime baseline
+- final stable-extractor FAR/FRR/EER values require running labeled pair evaluation
+
+Expected diploma chapters:
+1. Problem statement and relevance
+2. Analysis of biometric identification methods
+3. System architecture design
+4. Implementation of backend and desktop client
+5. Model subsystem and comparative analysis
+6. Experimental evaluation
+7. Conclusions and future work
+
+END OF CONTEXT
+
+
+OPTIONAL EXTRA PROMPT
+
+You can send the block above together with this additional instruction:
+
+"Using the project context above, write a structured diploma project text in academic Russian. Keep the tone formal. Include introduction, system architecture, implementation details, model comparison infrastructure, practical value, limitations, and conclusion. Emphasize that the project combines a stable pretrained baseline with an experimental custom PyTorch branch whose final quality claims require labeled evaluation."

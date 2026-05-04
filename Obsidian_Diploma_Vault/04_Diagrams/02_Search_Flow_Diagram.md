@@ -22,5 +22,5 @@ flowchart TD
 
 ## Key point
 
-`Search` is a multi-step workflow: validation, multi-face detection, embedding extraction, ANN retrieval,
+`Search` is a multi-step workflow: validation, multi-face detection, embedding extraction, approximate nearest-neighbor retrieval,
 metadata hydration, decision logic, audit logging and UI presentation.

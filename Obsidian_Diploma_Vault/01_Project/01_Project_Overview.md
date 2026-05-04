@@ -18,7 +18,7 @@ It combines a FastAPI backend, a PySide6 desktop client, FAISS vector search and
 The project deliberately separates:
 
 - embedding extraction;
-- ANN retrieval;
+- approximate nearest-neighbor retrieval;
 - operator UI;
 - metadata and embedding storage;
 - runtime security and audit.

@@ -212,23 +212,77 @@ The `training/` directory contains research utilities for the custom branch:
 - ONNX export helpers
 - dataset preparation scripts
 
-Training is CUDA-only in the current branch.
+The custom PyTorch branch is an experimental research extension. The stable MVP
+runtime relies on the pretrained ONNX/InsightFace extractor path. Custom model
+quality claims require valid training logs and labeled verification results.
+
+## Evaluation and benchmarks
+
+Synthetic FAISS retrieval benchmark:
+
+```powershell
+python scripts\benchmark_retrieval.py `
+  --sizes 100 1000 10000 `
+  --dim 512 `
+  --n-queries 100 `
+  --latency-warmup 10 `
+  --latency-runs 100 `
+  --hnsw-ef-search 64 `
+  --ivfpq-nlist 16 `
+  --ivfpq-m 16 `
+  --ivfpq-nbits 4 `
+  --ivfpq-nprobe 8 `
+  --output training\outputs\retrieval_benchmark.json
+```
+
+The tracked PR 2 benchmark artifacts are stored in `docs/benchmarks/`. The
+synthetic retrieval metric is `top_k_overlap@K`, not biometric identification
+hit@K and not biometric accuracy.
+
+Stable extractor verification evaluator:
+
+```powershell
+python scripts\evaluate_verification_pairs.py `
+  --backend onnx `
+  --images-dir data\lfw_aligned `
+  --pairs data\lfw\pairs.txt `
+  --output training\outputs\stable_onnx_lfw_results.json `
+  --target-far 0.001,0.01,0.1 `
+  --fail-on-missing
+```
+
+Do not report FAR, FRR, EER, TAR@FAR, or threshold values until this evaluator
+or another labeled verification evaluation has actually been run on the target
+dataset.
 
 ## Tests
 
-Backend tests:
+Run checks from the repository root:
 
 ```powershell
-cd backend
-.\.venv\Scripts\activate
-python -m pytest tests -q
+python -m pytest backend\tests -q
+python -m pytest training -q
+python -m ruff check backend training scripts
+python -m compileall -q backend\app desktop\app training scripts
 ```
 
-Quick syntax check:
+## Security and privacy notes
+
+Before using real biometric data:
 
 ```powershell
-python -m compileall backend/app desktop/app training
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+python -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
 ```
+
+- Replace all `REPLACE_WITH_*` placeholders in `.env`, `.env.local`, or `.env.docker`.
+- Do not use example configs with real biometric data.
+- API-key comparison uses timing-safe comparison.
+- In-memory rate limiting is configured with `RATE_LIMIT_ENABLED`, `RATE_LIMIT_SEARCH_PER_MIN`, `RATE_LIMIT_ENROLL_PER_MIN`, and `RATE_LIMIT_ADMIN_PER_MIN`.
+- The in-memory limiter is suitable for the local MVP only; distributed deployments need Redis, an API gateway, or another external limiter.
+- FAISS snapshot retention is configured with `INDEX_SNAPSHOT_RETENTION`; values `<= 0` disable pruning.
+- Index snapshots and embeddings are sensitive biometric template artifacts and still require controlled filesystem access, backups, and deployment-level protection.
+- Soft delete is implemented. A hard purge endpoint is not implemented yet.
 
 ## Troubleshooting
 

@@ -42,7 +42,7 @@ It includes:
 ## What to emphasize first during defense
 
 1. The project is a system, not only a model.
-2. Face search is split into extraction and ANN retrieval.
+2. Face search is split into extraction and approximate nearest-neighbor retrieval.
 3. Metadata is stored in DB, while FAISS handles vector search.
 4. `Enroll` is strict, `Search` and live webcam support multiple faces.
 5. The runtime includes auth, encrypted storage and audit logging.
