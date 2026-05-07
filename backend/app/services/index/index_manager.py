@@ -258,15 +258,27 @@ class IndexManager:
         self._params = params
 
         if embeddings:
-            vectors = np.vstack(
-                [
-                    np.frombuffer(decrypt_embedding_payload(e.vector), dtype=np.float32)
-                    for e in embeddings
-                ]
-            )
-            self._index.train(vectors)
-            for embedding, vector in zip(embeddings, vectors, strict=False):
-                self._index.add_embedding(str(embedding.id), vector)
+            valid_pairs = [
+                (embedding, vector)
+                for embedding in embeddings
+                if (vector := np.frombuffer(
+                    decrypt_embedding_payload(embedding.vector),
+                    dtype=np.float32,
+                )).shape[0] == self.dim
+            ]
+            skipped = len(embeddings) - len(valid_pairs)
+            if skipped:
+                self._logger.warning(
+                    "Skipped %d malformed embeddings while rebuilding model=%s pipeline=%s",
+                    skipped,
+                    self.model_name,
+                    self.pipeline,
+                )
+            if valid_pairs:
+                vectors = np.vstack([vector for _embedding, vector in valid_pairs])
+                self._index.train(vectors)
+                for embedding, vector in valid_pairs:
+                    self._index.add_embedding(str(embedding.id), vector)
 
         self.save_snapshot(db)
         return self.stats()

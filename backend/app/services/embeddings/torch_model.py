@@ -16,7 +16,7 @@ from torch import nn
 from torch.nn import functional as F
 
 # Ensure the project root is on ``sys.path`` so that ``training.*`` is importable.
-_PROJECT_ROOT = str(Path(__file__).resolve().parents[5])  # …/DiplomaWork
+_PROJECT_ROOT = str(Path(__file__).resolve().parents[4])  # .../DiplomaWork
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 

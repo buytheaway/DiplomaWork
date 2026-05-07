@@ -90,7 +90,7 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
 
         with torch.no_grad():
             if self.use_fp16:
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
                     embeddings = forward_with_normalization(
                         self.model, tensor, normalize=self.norm_embeddings
                     )

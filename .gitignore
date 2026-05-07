@@ -56,6 +56,8 @@ training/checkpoints/
 *.pth
 *.pt
 *.onnx
+refactor.patch
+test_face.jpg
 training/config.eval.yaml
 tmp/
 backend/tmp/

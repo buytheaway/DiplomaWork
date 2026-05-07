@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Sequence
 
 import torch
 from torch import nn
@@ -46,7 +46,7 @@ class IRBlock(nn.Module):
 
 
 class ResNetIR(nn.Module):
-    def __init__(self, layers: Iterable[int], embedding_dim: int = 512) -> None:
+    def __init__(self, layers: Sequence[int], embedding_dim: int = 512) -> None:
         super().__init__()
         self.stem = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),

@@ -1,12 +1,20 @@
 """Contract / unit tests — schemas, FAISS index, index manager, dummy extractor."""
 
+# ruff: noqa: E402
+
 import os
+import tempfile
 import uuid
+from pathlib import Path
 
 import numpy as np
 
 os.environ["TESTING"] = "true"
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
+_TEST_INDEX_DIR = Path(tempfile.gettempdir()) / f"diplomawork_backend_tests_{os.getpid()}"
+os.environ["INDEX_PATH"] = str(_TEST_INDEX_DIR / "current.faiss")
+os.environ["PRETRAINED_INDEX_PATH"] = str(_TEST_INDEX_DIR / "pretrained.faiss")
+os.environ["CUSTOM_INDEX_PATH"] = str(_TEST_INDEX_DIR / "custom.faiss")
 
 from app.api.schemas.enroll import EnrollResponse
 from app.core.config import get_settings
@@ -17,6 +25,7 @@ from app.services.embeddings.interface import (
 )
 from app.services.index.faiss_index import FaissIndex
 from app.services.index.index_manager import IndexManager
+from app.services.storage.repositories import EmbeddingRepo, PersonRepo
 
 # ── schema validation ────────────────────────────────────────────────────────
 
@@ -118,6 +127,37 @@ def test_index_manager_uses_embedding_dim():
     settings = get_settings()
     manager = IndexManager(settings)
     assert manager.dim == settings.embedding_dim
+
+
+def test_index_manager_rebuild_filters_pipeline(db_session):
+    settings = get_settings()
+    person = PersonRepo(db_session).create(label="pipeline-filter-test")
+    db_session.flush()
+
+    vector = np.zeros(settings.embedding_dim, dtype=np.float32)
+    vector[0] = 1.0
+    repo = EmbeddingRepo(db_session)
+    repo.create(
+        person_id=person.id,
+        pipeline="pretrained",
+        model="shared_model",
+        dim=settings.embedding_dim,
+        vector=vector.tobytes(),
+    )
+    custom_embedding = repo.create(
+        person_id=person.id,
+        pipeline="custom",
+        model="shared_model",
+        dim=settings.embedding_dim,
+        vector=vector.tobytes(),
+    )
+    db_session.flush()
+
+    manager = IndexManager(settings, model_name="shared_model", pipeline="custom")
+    stats = manager.rebuild(db_session, "flat", {})
+
+    assert stats["embeddings_count"] == 1
+    assert manager.search(vector, k=2)[0].embedding_id == str(custom_embedding.id)
 
 
 # ── dummy extractor ──────────────────────────────────────────────────────────

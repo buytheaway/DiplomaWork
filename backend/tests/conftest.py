@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from collections.abc import Generator
 from pathlib import Path
 
@@ -16,6 +17,10 @@ from sqlalchemy.pool import StaticPool
 # ── env vars must be set BEFORE importing app code ───────────────────────────
 os.environ.setdefault("TESTING", "true")
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+_TEST_INDEX_DIR = Path(tempfile.gettempdir()) / f"diplomawork_backend_tests_{os.getpid()}"
+os.environ.setdefault("INDEX_PATH", str(_TEST_INDEX_DIR / "current.faiss"))
+os.environ.setdefault("PRETRAINED_INDEX_PATH", str(_TEST_INDEX_DIR / "pretrained.faiss"))
+os.environ.setdefault("CUSTOM_INDEX_PATH", str(_TEST_INDEX_DIR / "custom.faiss"))
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
