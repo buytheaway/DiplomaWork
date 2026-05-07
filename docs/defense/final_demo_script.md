@@ -79,8 +79,11 @@ Run Compare mode on the same image.
 Say:
 
 "Compare mode processes the same input through available pipelines. This is
-useful for controlled comparison, but current documentation does not claim
-validated custom-model biometric accuracy."
+useful for controlled comparison. In the prepared demo environment, the custom
+Torch pipeline runs as a deployed IR-50 runtime path, while the pretrained ONNX
+pipeline remains available for comparison. This does not replace final
+system-level biometric verification: FAR, FRR, EER, and threshold claims require
+a controlled labeled-pair evaluation protocol."
 
 ## 6. Database And Logs
 
