@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -28,6 +28,14 @@ class PersonRepo:
         stmt = select(Person).where(Person.label == label)
         return self.db.execute(stmt).scalars().first()
 
+    def get_active_by_label(self, label: str) -> Person | None:
+        stmt = (
+            select(Person)
+            .where(Person.label == label, Person.status == "active")
+            .order_by(Person.created_at.desc())
+        )
+        return self.db.execute(stmt).scalars().first()
+
     def get_with_embeddings(self, person_id: str) -> Person | None:
         stmt = select(Person).where(Person.id == person_id).options(joinedload(Person.embeddings))
         return self.db.execute(stmt).scalars().first()
@@ -50,6 +58,26 @@ class PersonRepo:
         for emb in person.embeddings:
             emb.is_active = False
         return True
+
+    def soft_delete_duplicate_labels(self, label: str, keep_person_id: str) -> set[str]:
+        stmt = (
+            select(Person)
+            .where(
+                Person.label == label,
+                Person.status == "active",
+                Person.id != keep_person_id,
+            )
+            .options(joinedload(Person.embeddings))
+        )
+        duplicates = self.db.execute(stmt).unique().scalars().all()
+        affected_pipelines: set[str] = set()
+        for person in duplicates:
+            person.status = "deleted"
+            for emb in person.embeddings:
+                if emb.is_active:
+                    emb.is_active = False
+                    affected_pipelines.add(emb.pipeline)
+        return affected_pipelines
 
 
 def _matches_snapshot_path(candidate: str, base_path: str) -> bool:
@@ -90,6 +118,24 @@ class EmbeddingRepo:
         embedding = self.db.get(Embedding, embedding_id)
         if embedding is not None:
             embedding.is_active = False
+
+    def deactivate_active_for_person(
+        self,
+        person_id: str,
+        pipelines: Collection[str] | None = None,
+    ) -> set[str]:
+        stmt = select(Embedding).where(
+            Embedding.person_id == person_id,
+            Embedding.is_active.is_(True),
+        )
+        if pipelines:
+            stmt = stmt.where(Embedding.pipeline.in_(list(pipelines)))
+
+        affected_pipelines: set[str] = set()
+        for embedding in self.db.execute(stmt).scalars().all():
+            embedding.is_active = False
+            affected_pipelines.add(embedding.pipeline)
+        return affected_pipelines
 
     def get_active_embeddings(
         self,

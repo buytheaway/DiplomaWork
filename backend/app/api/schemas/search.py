@@ -45,26 +45,3 @@ class SearchResponse(BaseModel):
     available_pipelines: list[str] = Field(default_factory=list)
     detected_faces: list[DetectedFaceInfo] = Field(default_factory=list)
     latency_breakdown: LatencyBreakdown | None = None
-
-
-class CompareSearchItem(BaseModel):
-    pipeline: str
-    model: str
-    results: list[SearchResult] = Field(default_factory=list)
-    faces_detected: int = 0
-    matched_faces: int = 0
-    threshold_used: float = 0.0
-    best_score: float | None = None
-    best_match_above_threshold: bool = False
-    decision: str = "unknown"
-    latency_ms: float | None = None
-    error: str | None = None
-    detected_faces: list[DetectedFaceInfo] = Field(default_factory=list)
-    latency_breakdown: LatencyBreakdown | None = None
-
-
-class CompareSearchResponse(BaseModel):
-    k: int
-    comparisons: list[CompareSearchItem] = Field(default_factory=list)
-    available_pipelines: list[str] = Field(default_factory=list)
-    fastest_pipeline: str | None = None

@@ -27,6 +27,9 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         self.dim = 512
         self.strict_single_face = settings.strict_single_face
         self.min_det_score = settings.min_det_score
+        self.min_face_size_px = settings.min_face_size_px
+        self.min_face_area_ratio = settings.min_face_area_ratio
+        self.min_face_blur_variance = settings.min_face_blur_variance
         self.allow_center_crop = settings.allow_center_crop
         self.input_size = settings.torch_input_size
         self.use_fp16 = settings.torch_use_fp16
@@ -69,7 +72,14 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
     def _extract_face_embedding(self, image: np.ndarray, face) -> FaceEmbedding:
         import torch
 
-        validate_face_quality(face, self.min_det_score)
+        validate_face_quality(
+            face,
+            self.min_det_score,
+            image=image,
+            min_face_size_px=self.min_face_size_px,
+            min_face_area_ratio=self.min_face_area_ratio,
+            min_blur_variance=self.min_face_blur_variance,
+        )
 
         try:
             aligned = align_with_landmarks(

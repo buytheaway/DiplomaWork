@@ -9,7 +9,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.db.models import AuditLog
+from app.db.models import AuditLog, Embedding, Person
 from app.services.embeddings.interface import (
     DummyEmbeddingExtractor,
     FaceEmbedding,
@@ -43,6 +43,8 @@ def test_enroll_success(client):
     assert body["model"] == "dummy"
     assert body["dim"] == 512
     assert body["faces_detected"] == 1
+    assert body["pipeline"] == "both"
+    assert len(body["enrollments"]) == 2
     assert "person_id" in body
     assert "embedding_id" in body
 
@@ -54,6 +56,7 @@ def test_enroll_without_label(client):
     )
     assert resp.status_code == 200
     assert resp.json()["model"] == "dummy"
+    assert resp.json()["pipeline"] == "both"
 
 
 def test_enroll_custom_pipeline(client):
@@ -79,6 +82,48 @@ def test_enroll_both_pipelines(client):
     assert body["pipeline"] == "both"
     assert len(body["enrollments"]) == 2
     assert {item["pipeline"] for item in body["enrollments"]} == {"pretrained", "custom"}
+
+
+def test_enroll_same_label_reuses_person_and_rebuilds_pipelines(client, db_session):
+    first_resp = client.post(
+        "/v1/enroll",
+        files={"file": ("face.jpg", b"\x89PNG_duplicate_one", "image/jpeg")},
+        data={"label": "Duplicate Alice"},
+    )
+    second_resp = client.post(
+        "/v1/enroll",
+        files={"file": ("face.jpg", b"\x89PNG_duplicate_two", "image/jpeg")},
+        data={"label": "Duplicate Alice"},
+    )
+
+    assert first_resp.status_code == 200
+    assert second_resp.status_code == 200
+    assert second_resp.json()["person_id"] == first_resp.json()["person_id"]
+
+    active_people = db_session.execute(
+        select(Person).where(Person.label == "Duplicate Alice", Person.status == "active")
+    ).scalars().all()
+    assert len(active_people) == 1
+
+    active_embeddings = db_session.execute(
+        select(Embedding).where(
+            Embedding.person_id == active_people[0].id,
+            Embedding.is_active.is_(True),
+        )
+    ).scalars().all()
+    inactive_embeddings = db_session.execute(
+        select(Embedding).where(
+            Embedding.person_id == active_people[0].id,
+            Embedding.is_active.is_(False),
+        )
+    ).scalars().all()
+    assert {item.pipeline for item in active_embeddings} == {"pretrained", "custom"}
+    assert len(inactive_embeddings) == 2
+
+    pretrained_stats = client.get("/v1/index/stats", params={"pipeline": "pretrained"})
+    custom_stats = client.get("/v1/index/stats", params={"pipeline": "custom"})
+    assert pretrained_stats.json()["embeddings_count"] == 1
+    assert custom_stats.json()["embeddings_count"] == 1
 
 
 def test_enroll_empty_file_returns_400(client):
@@ -208,24 +253,6 @@ def test_rebuild_filters_same_model_by_pipeline(client):
     assert custom_resp.json()["results"][0]["label"] == "SameModelCustom"
 
 
-def test_search_compare(client):
-    client.post(
-        "/v1/enroll",
-        files={"file": ("a.jpg", b"\x89PNG_dual_compare", "image/jpeg")},
-        data={"label": "CompareBob", "pipeline": "both"},
-    )
-    resp = client.post(
-        "/v1/search/compare",
-        params={"k": 2},
-        files={"file": ("q.jpg", b"\x89PNG_query_compare", "image/jpeg")},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert "comparisons" in body
-    assert len(body["comparisons"]) == 2
-    assert {item["pipeline"] for item in body["comparisons"]} == {"pretrained", "custom"}
-
-
 def _strip_search_latency(payload: dict) -> dict:
     normalized = dict(payload)
     normalized["latency_ms"] = None
@@ -237,19 +264,6 @@ def _strip_search_latency(payload: dict) -> dict:
             "search_ms": None,
             "total_ms": None,
         }
-    return normalized
-
-
-def _strip_compare_latency(payload: dict) -> dict:
-    normalized = dict(payload)
-    comparisons = []
-    for item in normalized.get("comparisons", []):
-        row = dict(item)
-        row["latency_ms"] = None
-        row["latency_breakdown"] = None
-        comparisons.append(row)
-    normalized["comparisons"] = comparisons
-    normalized["fastest_pipeline"] = None
     return normalized
 
 
@@ -273,30 +287,6 @@ def test_search_audit_can_be_disabled_without_changing_response(client, db_sessi
     assert _strip_search_latency(enabled_resp.json()) == _strip_search_latency(disabled_resp.json())
     logs = db_session.execute(
         select(AuditLog).where(AuditLog.event_type == "search")
-    ).scalars().all()
-    assert len(logs) == 1
-
-
-def test_compare_audit_can_be_disabled_without_changing_response(client, db_session, monkeypatch):
-    enabled_resp = client.post(
-        "/v1/search/compare",
-        params={"k": 1},
-        files={"file": ("q.jpg", b"\x89PNG_compare_audit_on", "image/jpeg")},
-    )
-    assert enabled_resp.status_code == 200
-
-    monkeypatch.setattr(settings, "enable_compare_audit", False)
-
-    disabled_resp = client.post(
-        "/v1/search/compare",
-        params={"k": 1},
-        files={"file": ("q.jpg", b"\x89PNG_compare_no_audit", "image/jpeg")},
-    )
-
-    assert disabled_resp.status_code == 200
-    assert _strip_compare_latency(enabled_resp.json()) == _strip_compare_latency(disabled_resp.json())
-    logs = db_session.execute(
-        select(AuditLog).where(AuditLog.event_type == "search_compare")
     ).scalars().all()
     assert len(logs) == 1
 
@@ -440,8 +430,8 @@ def test_get_person_after_enroll(client):
     body = resp.json()
     assert body["label"] == "Charlie"
     assert body["status"] == "active"
-    assert len(body["embeddings"]) == 1
-    assert body["embeddings"][0]["pipeline"] == "pretrained"
+    assert len(body["embeddings"]) == 2
+    assert {item["pipeline"] for item in body["embeddings"]} == {"pretrained", "custom"}
 
 
 def test_get_person_not_found(client):

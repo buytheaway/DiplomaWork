@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Literal
 
@@ -12,8 +11,6 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_pipeline_registry
 from app.api.schemas.search import (
-    CompareSearchItem,
-    CompareSearchResponse,
     DetectedFaceInfo,
     LatencyBreakdown,
     SearchResponse,
@@ -270,114 +267,6 @@ async def search(
                 "faces_detected": response.faces_detected,
                 "matched_faces": response.matched_faces,
                 "decision": response.decision,
-                "k": k,
-            },
-        )
-    return response
-
-
-@router.post("/search/compare", response_model=CompareSearchResponse)
-async def search_compare(
-    request: Request,
-    file: UploadFile = File(...),
-    k: int = Query(5, ge=1, le=100),
-    db: Session = Depends(get_db),
-    registry: PipelineRegistry = Depends(get_pipeline_registry),
-) -> CompareSearchResponse:
-    try:
-        image_bytes = await read_image_upload(
-            file,
-            max_bytes=settings.max_upload_bytes,
-            allowed_types=allowed_content_types(settings.allowed_image_content_types),
-        )
-    except UploadValidationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    available = registry.available_pipelines()
-    if "pretrained" not in available or "custom" not in available:
-        raise HTTPException(
-            status_code=400,
-            detail="Compare mode requires both 'pretrained' and 'custom' pipelines",
-        )
-
-    runtimes = [registry.get("pretrained"), registry.get("custom")]
-    outcomes: list[RawSearchOutcome] = []
-
-    def _capture(runtime) -> RawSearchOutcome:
-        started = time.perf_counter()
-        try:
-            return _run_pipeline_search(runtime, image_bytes, k)
-        except Exception as exc:  # noqa: BLE001
-            mapped = _map_face_error(exc)
-            return RawSearchOutcome(
-                pipeline=runtime.key,
-                model=runtime.extractor.model_name,
-                faces=[],
-                latency_ms=(time.perf_counter() - started) * 1000,
-                threshold_used=settings.match_threshold,
-                best_score=None,
-                best_match_above_threshold=False,
-                decision="error",
-                error=mapped.detail,
-            )
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(_capture, runtime) for runtime in runtimes]
-        for future in futures:
-            outcomes.append(future.result())
-
-    comparisons: list[CompareSearchItem] = []
-    successful: list[RawSearchOutcome] = []
-    for outcome in outcomes:
-        if outcome.error is None:
-            successful.append(outcome)
-        comparisons.append(
-            CompareSearchItem(
-                pipeline=outcome.pipeline,
-                model=outcome.model,
-                results=_hydrate_results(
-                    db,
-                    outcome.pipeline,
-                    outcome.faces,
-                    outcome.threshold_used,
-                ),
-                faces_detected=len(outcome.faces),
-                matched_faces=sum(
-                    1 for face in outcome.faces if face.best_match_above_threshold
-                ),
-                threshold_used=outcome.threshold_used,
-                best_score=outcome.best_score,
-                best_match_above_threshold=outcome.best_match_above_threshold,
-                decision=outcome.decision,
-                latency_ms=outcome.latency_ms,
-                error=outcome.error,
-                detected_faces=[
-                    DetectedFaceInfo(
-                        face_index=face.face_index,
-                        detection_score=face.detection_score,
-                        face_bbox=list(face.face_bbox) if face.face_bbox is not None else None,
-                    )
-                    for face in outcome.faces
-                ],
-            )
-        )
-
-    fastest = min(successful, key=lambda item: item.latency_ms).pipeline if successful else None
-    response = CompareSearchResponse(
-        k=k,
-        comparisons=comparisons,
-        available_pipelines=available,
-        fastest_pipeline=fastest,
-    )
-    if settings.enable_compare_audit:
-        record_audit_event(
-            db,
-            request,
-            event_type="search_compare",
-            status_code=200,
-            details={
-                "pipelines": available,
-                "successful_pipelines": [item.pipeline for item in successful],
-                "fastest_pipeline": fastest,
                 "k": k,
             },
         )

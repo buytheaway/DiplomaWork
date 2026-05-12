@@ -66,6 +66,9 @@ docs/*
 !docs/benchmarks/**
 !docs/defense/
 !docs/defense/**
+diplomcheckbackup/
+check/
+demo-model/
 
 # Logs
 backend/logs/

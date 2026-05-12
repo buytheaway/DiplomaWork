@@ -126,7 +126,18 @@ class FaissIndex(VectorIndex):
         return int(self._index.ntotal)
 
     def stats(self) -> dict[str, Any]:
-        memory_bytes = int(self.count() * self.dim * 4)
+        count = self.count()
+        vector_bytes = count * self.dim * 4
+        if self.index_type == "hnsw":
+            graph_m = int(self.params.get("m", 32))
+            memory_bytes = int(vector_bytes + count * graph_m * 2 * 8)
+        elif self.index_type == "ivfpq":
+            pq_m = int(self.params.get("m", 16))
+            pq_nbits = int(self.params.get("nbits", 8))
+            code_bytes = count * pq_m * pq_nbits / 8
+            memory_bytes = int(code_bytes)
+        else:
+            memory_bytes = int(vector_bytes)
         is_trained = True
         if self.index_type == "ivfpq":
             try:

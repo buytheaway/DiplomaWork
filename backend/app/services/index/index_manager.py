@@ -253,33 +253,46 @@ class IndexManager:
             model=self.model_name,
             pipeline=self.pipeline,
         )
-        self._index = self._create_index(index_type, params)
-        self._index_type = index_type
-        self._params = params
+        next_index = self._create_index(index_type, params)
 
         if embeddings:
-            valid_pairs = [
-                (embedding, vector)
-                for embedding in embeddings
-                if (vector := np.frombuffer(
-                    decrypt_embedding_payload(embedding.vector),
-                    dtype=np.float32,
-                )).shape[0] == self.dim
-            ]
+            valid_pairs = []
+            for embedding in embeddings:
+                try:
+                    vector = np.frombuffer(
+                        decrypt_embedding_payload(embedding.vector),
+                        dtype=np.float32,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    self._logger.warning(
+                        "Skipped unreadable embedding id=%s model=%s pipeline=%s: %s",
+                        embedding.id,
+                        self.model_name,
+                        self.pipeline,
+                        exc.__class__.__name__,
+                    )
+                    continue
+                if vector.shape[0] != self.dim:
+                    continue
+                valid_pairs.append((embedding, vector))
+
             skipped = len(embeddings) - len(valid_pairs)
             if skipped:
                 self._logger.warning(
-                    "Skipped %d malformed embeddings while rebuilding model=%s pipeline=%s",
+                    "Skipped %d unreadable or malformed embeddings while rebuilding model=%s pipeline=%s",
                     skipped,
                     self.model_name,
                     self.pipeline,
                 )
             if valid_pairs:
                 vectors = np.vstack([vector for _embedding, vector in valid_pairs])
-                self._index.train(vectors)
+                next_index.train(vectors)
                 for embedding, vector in valid_pairs:
-                    self._index.add_embedding(str(embedding.id), vector)
+                    next_index.add_embedding(str(embedding.id), vector)
 
+        self._index = next_index
+        self._index_type = index_type
+        self._params = params
         self.save_snapshot(db)
         return self.stats()
 

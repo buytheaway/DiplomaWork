@@ -46,6 +46,7 @@ async def enroll(
     db: Session = Depends(get_db),
     registry: PipelineRegistry = Depends(get_pipeline_registry),
 ) -> EnrollResponse:
+    normalized_label = label.strip() if label and label.strip() else None
     try:
         image_bytes = await read_image_upload(
             file,
@@ -70,7 +71,30 @@ async def enroll(
     person_repo = PersonRepo(db)
     embedding_repo = EmbeddingRepo(db)
 
-    person = person_repo.create(label=label)
+    person = (
+        person_repo.get_active_by_label(normalized_label)
+        if normalized_label is not None
+        else None
+    )
+    reused_person = person is not None
+    runtime_keys = {runtime_key for runtime_key, _model_name, _embedding in computed}
+    affected_pipelines: set[str] = set()
+
+    if person is None:
+        person = person_repo.create(label=normalized_label)
+    elif normalized_label is not None:
+        affected_pipelines.update(
+            embedding_repo.deactivate_active_for_person(
+                person.id,
+                pipelines=runtime_keys,
+            )
+        )
+        affected_pipelines.update(
+            person_repo.soft_delete_duplicate_labels(
+                normalized_label,
+                str(person.id),
+            )
+        )
     db.flush()
 
     saved_rows: list[tuple[str, str, object, object]] = []
@@ -92,16 +116,27 @@ async def enroll(
 
     try:
         touched_pipelines: set[str] = set()
-        for runtime_key, _model_name, embedding, embedding_row in saved_rows:
-            runtime = registry.get(runtime_key)  # type: ignore[arg-type]
-            runtime.index_manager.add_embedding(str(embedding_row.id), embedding)
+        for runtime_key, _model_name, _embedding, _embedding_row in saved_rows:
             touched_pipelines.add(runtime_key)
 
-        if settings.auto_save_index:
-            for runtime_key in touched_pipelines:
+        if reused_person or affected_pipelines:
+            available = set(registry.available_pipelines())
+            for runtime_key in touched_pipelines.union(affected_pipelines):
+                if runtime_key not in available:
+                    continue
                 runtime = registry.get(runtime_key)  # type: ignore[arg-type]
-                runtime.index_manager.save_snapshot(db)
+                runtime.index_manager.rebuild_current(db)
             db.commit()
+        else:
+            for runtime_key, _model_name, embedding, embedding_row in saved_rows:
+                runtime = registry.get(runtime_key)  # type: ignore[arg-type]
+                runtime.index_manager.add_embedding(str(embedding_row.id), embedding)
+
+            if settings.auto_save_index:
+                for runtime_key in touched_pipelines:
+                    runtime = registry.get(runtime_key)  # type: ignore[arg-type]
+                    runtime.index_manager.save_snapshot(db)
+                db.commit()
     except Exception as exc:  # pragma: no cover - exercised in real runtime
         for _, _, _, embedding_row in saved_rows:
             embedding_repo.deactivate(embedding_row.id)
@@ -125,7 +160,7 @@ async def enroll(
         faces_detected=1,
         model=first.model,
         dim=first.dim,
-        pipeline=pipeline or registry.default_pipeline,
+        pipeline=pipeline or ("both" if len(enrollments) > 1 else first.pipeline),
         available_pipelines=registry.available_pipelines(),
         enrollments=enrollments,
     )
@@ -138,6 +173,7 @@ async def enroll(
             "person_id": str(person.id),
             "pipelines": [item.pipeline for item in enrollments],
             "faces_detected": 1,
+            "reused_person": reused_person,
         },
     )
     return response

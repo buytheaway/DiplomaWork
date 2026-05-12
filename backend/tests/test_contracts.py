@@ -160,6 +160,39 @@ def test_index_manager_rebuild_filters_pipeline(db_session):
     assert manager.search(vector, k=2)[0].embedding_id == str(custom_embedding.id)
 
 
+def test_index_manager_rebuild_skips_unreadable_embeddings(db_session):
+    settings = get_settings()
+    person = PersonRepo(db_session).create(label="bad-vector-test")
+    db_session.flush()
+
+    vector = np.zeros(settings.embedding_dim, dtype=np.float32)
+    vector[0] = 1.0
+    repo = EmbeddingRepo(db_session)
+    valid_embedding = repo.create(
+        person_id=person.id,
+        pipeline="pretrained",
+        model="dummy",
+        dim=settings.embedding_dim,
+        vector=vector.tobytes(),
+    )
+    bad_embedding = repo.create(
+        person_id=person.id,
+        pipeline="pretrained",
+        model="dummy",
+        dim=settings.embedding_dim,
+        vector=vector.tobytes(),
+    )
+    db_session.flush()
+    bad_embedding.vector = b"ENC1" + (b"\x00" * 48)
+    db_session.flush()
+
+    manager = IndexManager(settings, model_name="dummy", pipeline="pretrained")
+    stats = manager.rebuild(db_session, "flat", {})
+
+    assert stats["embeddings_count"] == 1
+    assert manager.search(vector, k=2)[0].embedding_id == str(valid_embedding.id)
+
+
 # ── dummy extractor ──────────────────────────────────────────────────────────
 
 

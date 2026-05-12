@@ -72,20 +72,7 @@ Say:
 candidate vectors, and the backend enriches matches with metadata from the
 database."
 
-## 5. Compare Mode
-
-Run Compare mode on the same image.
-
-Say:
-
-"Compare mode processes the same input through available pipelines. This is
-useful for controlled comparison. In the prepared demo environment, the custom
-Torch pipeline runs as a deployed IR-50 runtime path, while the pretrained ONNX
-pipeline remains available for comparison. This does not replace final
-system-level biometric verification: FAR, FRR, EER, and threshold claims require
-a controlled labeled-pair evaluation protocol."
-
-## 6. Database And Logs
+## 5. Database And Logs
 
 Open Database and Logs.
 
@@ -95,7 +82,7 @@ Say:
 support operational review. Delete is a soft-delete workflow; hard purge is
 future work."
 
-## 7. Benchmark Table
+## 6. Benchmark Table
 
 Open `docs/benchmarks/retrieval_benchmark_pr2.md` or the diploma benchmark
 section.
@@ -116,7 +103,7 @@ Say:
 behavior, not biometric recognition accuracy. The metric is
 `top_k_overlap@K`, the overlap with exact Flat top-K neighbors."
 
-## 8. Security And Privacy Summary
+## 7. Security And Privacy Summary
 
 Show README or diploma security section.
 

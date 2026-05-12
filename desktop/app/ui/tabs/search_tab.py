@@ -11,7 +11,6 @@ except ImportError:  # pragma: no cover - runtime dependency check
     cv2 = None
 
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -34,7 +33,13 @@ from app.core.config import DesktopSettings
 from app.core.worker import ApiWorker
 from app.ui.activity import record_event
 from app.ui.dialogs import show_error, show_warning
-from app.ui.live_geometry import encoded_frame_geometry, scale_bbox
+from app.ui.frame_processing import (
+    draw_live_annotations,
+    encode_frame_for_upload,
+    encode_image_file_for_upload,
+    frame_to_pixmap,
+)
+from app.ui.live_geometry import scale_bbox
 from app.ui.widgets import (
     ActionButton,
     Card,
@@ -99,10 +104,8 @@ class SearchTab(QWidget):
         self.mode_group.setExclusive(True)
         self.mode_search_btn = self._make_mode_button("Search", "search")
         self.mode_enroll_btn = self._make_mode_button("Enroll", "enroll")
-        self.mode_compare_btn = self._make_mode_button("Compare", "compare")
         mode_row.addWidget(self.mode_search_btn)
         mode_row.addWidget(self.mode_enroll_btn)
-        mode_row.addWidget(self.mode_compare_btn)
         mode_row.addStretch()
         left.addLayout(mode_row)
 
@@ -215,14 +218,7 @@ class SearchTab(QWidget):
         self.summary_message.setProperty("state", "idle")
         summary.addWidget(self.summary_message)
 
-        self.compare_summary_row = QHBoxLayout()
-        self.compare_summary_row.setSpacing(10)
-        self.compare_pretrained = self._make_compare_tile("Pretrained")
-        self.compare_custom = self._make_compare_tile("Custom")
-        self.compare_summary_row.addWidget(self.compare_pretrained, 1)
-        self.compare_summary_row.addWidget(self.compare_custom, 1)
-        summary.addLayout(self.compare_summary_row)
-        self._set_compare_summary_visible(False)
+
         right_col.addWidget(summary_card)
 
         self.detected_faces_card = Card(variant="subtle")
@@ -265,28 +261,7 @@ class SearchTab(QWidget):
 
         self._set_mode("search")
 
-    def _make_compare_tile(self, title: str) -> Card:
-        tile = Card(variant="subtle")
-        body = tile.body()
-        body.setContentsMargins(12, 10, 12, 10)
-        heading = QLabel(title)
-        heading.setObjectName("microLabel")
-        score = QLabel("-")
-        score.setObjectName("infoValue")
-        meta = DimLabel("No result")
-        body.addWidget(heading)
-        body.addWidget(score)
-        body.addWidget(meta)
-        tile.score_label = score  # type: ignore[attr-defined]
-        tile.meta_label = meta  # type: ignore[attr-defined]
-        return tile
 
-    def _set_compare_summary_visible(self, visible: bool) -> None:
-        for idx in range(self.compare_summary_row.count()):
-            item = self.compare_summary_row.itemAt(idx)
-            widget = item.widget()
-            if widget is not None:
-                widget.setVisible(visible)
 
     def _make_mode_button(self, text: str, mode: str) -> QPushButton:
         button = QPushButton(text)
@@ -304,7 +279,6 @@ class SearchTab(QWidget):
         mapping = {
             "search": self.mode_search_btn,
             "enroll": self.mode_enroll_btn,
-            "compare": self.mode_compare_btn,
         }
         mapping[mode].setChecked(True)
 
@@ -315,15 +289,9 @@ class SearchTab(QWidget):
         self.pause_btn.setEnabled(mode != "enroll" and self._live_running)
 
         self.pipeline_combo.clear()
-        if mode == "compare":
-            self.pipeline_combo.addItem("Dual pipeline", "compare")
+        if mode == "enroll":
+            self.pipeline_combo.addItem("Both pipelines", "both")
             self.pipeline_combo.setEnabled(False)
-            self.execute_btn.setText("Compare models")
-        elif mode == "enroll":
-            self.pipeline_combo.addItem("Pretrained", "pretrained")
-            self.pipeline_combo.addItem("Custom", "custom")
-            self.pipeline_combo.addItem("Both", "both")
-            self.pipeline_combo.setEnabled(True)
             self.execute_btn.setText("Enroll person")
         else:
             self.pipeline_combo.addItem("Pretrained", "pretrained")
@@ -372,7 +340,7 @@ class SearchTab(QWidget):
         self.info_latency.set_value("-")
         self.info_faces.set_value("-")
         self._set_summary_message("idle", "No search has been run yet.")
-        self._set_compare_summary_visible(False)
+
 
     def _execute(self) -> None:
         path = self._image_path()
@@ -384,7 +352,24 @@ class SearchTab(QWidget):
             show_warning(self, "Missing label", "Enroll mode expects a profile label.")
             return
 
-        self._dispatch_request(path, origin="manual", source_label=path)
+        image_source: str | bytes = path
+        bbox_scale = (1.0, 1.0)
+        encoded_result = self._encode_image_file(path)
+        if encoded_result is not None:
+            image_source, bbox_scale = encoded_result
+            record_event(
+                "search",
+                "Optimized selected image before upload",
+                severity="INFO",
+                meta={"path": path},
+            )
+
+        self._dispatch_request(
+            image_source,
+            origin="manual",
+            source_label=path,
+            bbox_scale=bbox_scale,
+        )
 
     def _dispatch_request(
         self,
@@ -407,9 +392,7 @@ class SearchTab(QWidget):
         else:
             record_event("search", f"Started {self._mode} request", severity="INFO", meta={"path": source_label})
 
-        if self._mode == "compare":
-            self._worker = ApiWorker(self.api.search_compare, image_source, self.k_input.value(), parent=self)
-        elif self._mode == "enroll":
+        if self._mode == "enroll":
             self._worker = ApiWorker(
                 self.api.enroll,
                 image_source,
@@ -440,8 +423,6 @@ class SearchTab(QWidget):
 
         if self._mode == "enroll":
             self._render_enroll(payload, latency_ms)
-        elif self._mode == "compare":
-            self._render_compare(payload, latency_ms)
         else:
             self._render_search(payload, latency_ms)
 
@@ -464,7 +445,7 @@ class SearchTab(QWidget):
         self.info_latency.set_value(f"{latency_ms:.0f} ms")
         self.info_faces.set_value(str(payload.get("faces_detected", 0)))
         self._set_summary_message("ok", "Profile registered and indexed for search.")
-        self._set_compare_summary_visible(False)
+
 
         row = {
             "label": self.label_input.text().strip() or "Registered",
@@ -500,7 +481,7 @@ class SearchTab(QWidget):
         self.info_best.set_value(f"{best_score:.4f}" if best_score is not None else "-")
         self.info_latency.set_value(f"{payload.get('latency_ms', latency_ms):.0f} ms")
         self.info_faces.set_value(f"{matched_faces}/{faces_detected}")
-        self._set_compare_summary_visible(False)
+
         self._set_summary_message(
             pill_state,
             self._search_summary_text(decision, best_score, matched_faces, faces_detected),
@@ -519,49 +500,7 @@ class SearchTab(QWidget):
                 details=f"decision={decision} best_score={best_score}",
             )
 
-    def _render_compare(self, payload: object, latency_ms: float) -> None:
-        self._clear_results()
-        if not isinstance(payload, dict):
-            return
 
-        comparisons = payload.get("comparisons", [])
-        fastest = payload.get("fastest_pipeline", "-")
-        merged_results: list[dict] = []
-        best_summary: list[str] = []
-        total_faces = 0
-
-        for item in comparisons:
-            pipeline = item.get("pipeline", "?")
-            best = item.get("best_score")
-            threshold = item.get("threshold_used")
-            best_summary.append(f"{pipeline}: {best:.4f}" if best is not None else f"{pipeline}: -")
-            total_faces += int(item.get("faces_detected", 0))
-            for result in item.get("results", []):
-                row = dict(result)
-                row["pipeline"] = pipeline
-                row["threshold_used"] = threshold
-                merged_results.append(row)
-
-        self.matches_pill.set_state("warn", f"{len(merged_results)} matches")
-        self.info_mode.set_value(f"Compare - fastest {str(fastest).title()}")
-        self.info_best.set_value(" | ".join(best_summary) if best_summary else "-")
-        self.info_latency.set_value(f"{latency_ms:.0f} ms")
-        self.info_faces.set_value(str(total_faces))
-        self._render_compare_summary(comparisons, fastest)
-        self._set_summary_message(
-            "ok" if merged_results else "warn",
-            self._compare_summary_text(comparisons, fastest),
-        )
-
-        merged_results.sort(key=lambda item: float(item.get("score", 0.0)), reverse=True)
-        self._populate_results(merged_results, empty_text="Compare completed, but no matches were returned.")
-        if self._request_origin != "live":
-            record_event(
-                "compare",
-                f"Compared pipelines, fastest={fastest}",
-                severity="INFO",
-                details=", ".join(best_summary),
-            )
 
     def _clear_results(self) -> None:
         self.matches_table.setRowCount(0)
@@ -587,51 +526,7 @@ class SearchTab(QWidget):
             return f"No confident match. {faces_detected} face(s) detected, but scores stayed below the threshold."
         return "No face result is available for this request."
 
-    def _compare_summary_text(self, comparisons: list[dict[str, Any]], fastest: object) -> str:
-        if not comparisons:
-            return "Compare did not return pipeline results."
-        matched = [
-            str(item.get("pipeline", "-"))
-            for item in comparisons
-            if item.get("decision") == "match"
-        ]
-        if matched:
-            return f"Compare found a match in {', '.join(matched)}. Fastest pipeline: {fastest or '-'}."
-        if any(item.get("error") for item in comparisons):
-            return "Compare completed with a pipeline error. Open technical details for the raw response."
-        return f"Both pipelines completed without a confident match. Fastest pipeline: {fastest or '-'}."
 
-    def _render_compare_summary(self, comparisons: list[dict[str, Any]], fastest: object) -> None:
-        tiles = {
-            "pretrained": self.compare_pretrained,
-            "custom": self.compare_custom,
-        }
-        for _key, tile in tiles.items():
-            score_label = tile.score_label
-            meta_label = tile.meta_label
-            score_label.setText("-")
-            meta_label.setText("No result")
-
-        for item in comparisons:
-            key = str(item.get("pipeline", "")).lower()
-            tile = tiles.get(key)
-            if tile is None:
-                continue
-            score_label = tile.score_label
-            meta_label = tile.meta_label
-            best = item.get("best_score")
-            score_label.setText(self._format_score(best))
-            parts = [
-                str(item.get("decision", "unknown")).title(),
-                f"{item.get('latency_ms', 0):.0f} ms",
-                f"{item.get('matched_faces', 0)}/{item.get('faces_detected', 0)} faces",
-            ]
-            if item.get("pipeline") == fastest:
-                parts.append("fastest")
-            if item.get("error"):
-                parts = ["Error", str(item.get("error"))]
-            meta_label.setText(" - ".join(parts))
-        self._set_compare_summary_visible(True)
 
     def _populate_results(
         self,
@@ -695,16 +590,6 @@ class SearchTab(QWidget):
         if not isinstance(payload, dict):
             return "ok", f"Live - {latency_ms:.0f} ms"
 
-        if "comparisons" in payload:
-            comparisons = payload.get("comparisons", [])
-            decisions = [str(item.get("decision", "")).lower() for item in comparisons]
-            if "match" in decisions:
-                return "ok", f"Match - {latency_ms:.0f} ms"
-            if any(decision == "unknown" for decision in decisions):
-                return "warn", f"Unknown - {latency_ms:.0f} ms"
-            if any(item.get("error") for item in comparisons):
-                return "error", "Compare error"
-            return "ok", f"Live - {latency_ms:.0f} ms"
 
         decision = str(payload.get("decision", "")).lower()
         if decision == "match":
@@ -755,9 +640,9 @@ class SearchTab(QWidget):
     def _on_live_preset_changed(self) -> None:
         preset = self.live_preset.currentData()
         values = {
-            "fast": 800 if self._mode != "compare" else 1200,
-            "balanced": 1200 if self._mode != "compare" else 1800,
-            "safe": 2000 if self._mode != "compare" else 2600,
+            "fast": 800,
+            "balanced": 1200,
+            "safe": 2000,
         }
         if preset in values:
             self.live_interval.blockSignals(True)
@@ -782,7 +667,7 @@ class SearchTab(QWidget):
 
     def _start_camera(self) -> None:
         if self._mode == "enroll":
-            show_warning(self, "Camera unavailable", "Live camera mode is available only for Search or Compare.")
+            show_warning(self, "Camera unavailable", "Live camera mode is available only for Search.")
             return
         if cv2 is None:
             show_error(self, "Camera unavailable", "OpenCV is not installed in the desktop environment.")
@@ -869,7 +754,10 @@ class SearchTab(QWidget):
         # Only copy for the API request if the previous one was consumed
         if self._frame_for_request is None:
             self._frame_for_request = frame.copy()
-        display = frame if not self._live_annotations else self._draw_live_annotations(frame.copy())
+        display = frame if not self._live_annotations else draw_live_annotations(
+            frame.copy(),
+            self._live_annotations,
+        )
         self._show_frame(display)
 
     def _submit_live_frame(self) -> None:
@@ -879,7 +767,11 @@ class SearchTab(QWidget):
             return
         frame = self._frame_for_request
         self._frame_for_request = None  # mark as consumed
-        encoded_result = self._encode_frame(frame)
+        encoded_result = encode_frame_for_upload(
+            frame,
+            max_width=self.settings.live_max_width,
+            jpeg_quality=self.settings.live_jpeg_quality,
+        )
         if encoded_result is None:
             self.live_status.set_state("error", "Encode failed")
             return
@@ -891,85 +783,20 @@ class SearchTab(QWidget):
             bbox_scale=bbox_scale,
         )
 
-    def _encode_frame(self, frame: Any) -> tuple[bytes, tuple[float, float]] | None:
-        if cv2 is None:
-            return None
-        h, w = frame.shape[:2]
-        encoded_w, encoded_h, bbox_scale = encoded_frame_geometry(
-            width=w,
-            height=h,
+    def _encode_image_file(self, path: str) -> tuple[bytes, tuple[float, float]] | None:
+        return encode_image_file_for_upload(
+            path,
             max_width=self.settings.live_max_width,
+            jpeg_quality=self.settings.live_jpeg_quality,
         )
-        if encoded_w != w or encoded_h != h:
-            frame = cv2.resize(frame, (encoded_w, encoded_h), interpolation=cv2.INTER_AREA)
-        quality = min(max(self.settings.live_jpeg_quality, 40), 95)
-        ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
-        if not ok:
-            return None
-        return buffer.tobytes(), bbox_scale
 
     def _show_frame(self, frame: Any) -> None:
-        pixmap = self._frame_to_pixmap(frame)
+        pixmap = frame_to_pixmap(frame)
         if pixmap is not None:
             self.drop_zone.set_pixmap(pixmap)
             self.file_label.setText("Live camera")
             self.file_label.setToolTip("Webcam stream")
             self.file_label.setProperty("selected_path", "")
-
-    def _frame_to_pixmap(self, frame: Any) -> QPixmap | None:
-        if cv2 is None:
-            return None
-        # Downscale for display if the frame is very large
-        h, w = frame.shape[:2]
-        max_w = 640
-        if w > max_w:
-            scale = max_w / w
-            frame = cv2.resize(frame, (max_w, int(h * scale)), interpolation=cv2.INTER_AREA)
-            h, w = frame.shape[:2]
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        height, width, channels = rgb.shape
-        bytes_per_line = channels * width
-        image = QImage(rgb.data, width, height, bytes_per_line, QImage.Format_RGB888).copy()
-        return QPixmap.fromImage(image)
-
-    def _draw_live_annotations(self, frame: Any) -> Any:
-        if cv2 is None or not self._live_annotations:
-            return frame
-        for annotation in self._live_annotations:
-            bbox = annotation.get("face_bbox")
-            if not bbox or len(bbox) != 4:
-                continue
-            x1, y1, x2, y2 = [int(max(0, value)) for value in bbox]
-            quality = annotation.get("quality", "unknown")
-            color = self._overlay_color(quality)
-            label = annotation.get("label") or "Unknown"
-            score = annotation.get("score")
-            pipeline = annotation.get("pipeline")
-            parts = [label]
-            if pipeline:
-                parts.append(str(pipeline))
-            if score is not None:
-                parts.append(f"{float(score):.3f}")
-            text = " | ".join(parts)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            cv2.rectangle(
-                frame,
-                (x1, max(0, y1 - 26)),
-                (min(frame.shape[1] - 1, x1 + max(120, len(text) * 7)), y1),
-                color,
-                -1,
-            )
-            cv2.putText(
-                frame,
-                text,
-                (x1 + 4, max(14, y1 - 8)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.45,
-                (4, 16, 23),
-                1,
-                cv2.LINE_AA,
-            )
-        return frame
 
     def _update_live_annotations(self, payload: object) -> None:
         if not isinstance(payload, dict):
@@ -979,13 +806,6 @@ class SearchTab(QWidget):
         # No need to force-redraw here; the camera timer will pick up
         # the new annotations on the next frame tick (~33ms away)
 
-    def _overlay_color(self, quality: str) -> tuple[int, int, int]:
-        if quality == "match":
-            return (55, 243, 187)
-        if quality == "weak":
-            return (115, 204, 255)
-        return (136, 107, 255)
-
     def _extract_annotations(
         self,
         payload: dict[str, Any],
@@ -994,26 +814,12 @@ class SearchTab(QWidget):
         grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
         thresholds: dict[int, float] = {}
 
-        if "comparisons" in payload:
-            for comparison in payload.get("comparisons", []):
-                pipeline = comparison.get("pipeline")
-                threshold = float(comparison.get("threshold_used", 0.0))
-                for result in comparison.get("results", []):
-                    row = dict(result)
-                    row["pipeline"] = pipeline
-                    row["face_bbox"] = scale_bbox(row.get("face_bbox"), bbox_scale)
-                    grouped[int(row.get("face_index", 0))].append(row)
-                    thresholds[int(row.get("face_index", 0))] = max(
-                        threshold,
-                        thresholds.get(int(row.get("face_index", 0)), 0.0),
-                    )
-        else:
-            threshold = float(payload.get("threshold_used", 0.0))
-            for result in payload.get("results", []):
-                row = dict(result)
-                row["face_bbox"] = scale_bbox(row.get("face_bbox"), bbox_scale)
-                grouped[int(result.get("face_index", 0))].append(row)
-                thresholds[int(result.get("face_index", 0))] = threshold
+        threshold = float(payload.get("threshold_used", 0.0))
+        for result in payload.get("results", []):
+            row = dict(result)
+            row["face_bbox"] = scale_bbox(row.get("face_bbox"), bbox_scale)
+            grouped[int(result.get("face_index", 0))].append(row)
+            thresholds[int(result.get("face_index", 0))] = threshold
 
         annotations: list[dict[str, Any]] = []
         matched_face_indices: set[int] = set()
@@ -1032,12 +838,7 @@ class SearchTab(QWidget):
             annotations.append(best)
             matched_face_indices.add(face_index)
 
-        detected_faces: list[dict[str, Any]] = []
-        if "comparisons" in payload:
-            for comparison in payload.get("comparisons", []):
-                detected_faces.extend(comparison.get("detected_faces", []))
-        else:
-            detected_faces = payload.get("detected_faces", [])
+        detected_faces = payload.get("detected_faces", [])
 
         for face_info in detected_faces:
             face_index = int(face_info.get("face_index", 0))

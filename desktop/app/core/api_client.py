@@ -62,8 +62,6 @@ def _friendly_http_error(status_code: int | None, detail: str) -> str:
     if status_code == 400:
         if "invalid image" in normalized:
             return "The selected file is not a valid image."
-        if "compare mode requires both" in normalized:
-            return "Compare mode needs both pretrained and custom pipelines to be available."
         if "index update failed" in normalized:
             return "The search index could not be updated. Open Logs and rebuild the index."
     if status_code == 422:
@@ -147,7 +145,7 @@ class ApiClient:
         self,
         image_path: str | bytes,
         label: str | None,
-        pipeline: str = "pretrained",
+        pipeline: str = "both",
     ) -> dict[str, Any]:
         with self._image_file(image_path) as files:
             data = {"pipeline": pipeline}
@@ -161,15 +159,6 @@ class ApiClient:
                 "POST",
                 f"{self.base_url}/v1/search",
                 params={"k": k, "pipeline": pipeline},
-                files=files,
-            )
-
-    def search_compare(self, image_path: str | bytes, k: int) -> dict[str, Any]:
-        with self._image_file(image_path) as files:
-            return self._request_json(
-                "POST",
-                f"{self.base_url}/v1/search/compare",
-                params={"k": k},
                 files=files,
             )
 

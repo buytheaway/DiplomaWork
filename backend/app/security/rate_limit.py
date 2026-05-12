@@ -90,10 +90,7 @@ def rate_limit_rule_for_request(settings: Settings, method: str, path: str) -> R
     normalized_path = path.rstrip("/") or "/"
     method = method.upper()
 
-    if method == "POST" and normalized_path in {
-        f"{prefix}/search",
-        f"{prefix}/search/compare",
-    }:
+    if method == "POST" and normalized_path == f"{prefix}/search":
         return RateLimitRule("search", settings.rate_limit_search_per_min)
     if method == "POST" and normalized_path == f"{prefix}/enroll":
         return RateLimitRule("enroll", settings.rate_limit_enroll_per_min)

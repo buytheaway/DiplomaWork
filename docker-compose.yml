@@ -31,6 +31,7 @@ services:
     volumes:
       - ./backend/data:/app/data
       - ./models:/app/models:ro
+      - ./training/models:/app/training/models:ro
       - ./training/outputs:/app/training/outputs:ro
       - ./model_bundle:/app/model_bundle:ro
 

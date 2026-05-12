@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
-from typing import Callable
 
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
@@ -57,7 +57,7 @@ class DashboardTab(QWidget):
         self.overview_headline.setObjectName("metricValue")
         self.overview_headline.setStyleSheet("font-size: 26px; background: transparent;")
         self.overview_text = DimLabel(
-            "Open Face Search to run queries, compare pipelines, or enroll new records."
+            "Open Face Search to run queries or enroll new records."
         )
         overview.addWidget(self.overview_headline)
         overview.addWidget(self.overview_text)

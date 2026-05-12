@@ -14,7 +14,6 @@ Main runtime features:
 
 - `pretrained` pipeline
 - `custom` pipeline
-- `compare` mode for side-by-side pipeline evaluation
 - strict single-face enroll
 - multi-face search
 - near real-time webcam search in the desktop client
@@ -64,6 +63,58 @@ python -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).dec
 
 ### 1. Start the backend
 
+The backend reads configuration from `DiplomaWork\.env` or from environment
+variables. A plain `python -m uvicorn app.main:app ...` will fail if these
+values are missing.
+
+For the local defense/demo runtime, `.env` must include at least:
+
+```dotenv
+DATABASE_URL=sqlite+pysqlite:///./backend_local_test3.db
+DEFAULT_PIPELINE=custom
+ENABLE_PRETRAINED_PIPELINE=true
+ENABLE_CUSTOM_PIPELINE=true
+
+PRETRAINED_BACKEND=onnx
+CUSTOM_BACKEND=torch
+EMBEDDING_BACKEND=onnx
+
+ONNX_DETECTOR_PATH=models/det_10g.onnx
+ONNX_EMBEDDER_PATH=models/w600k_r50.onnx
+
+TORCH_MODEL_PATH=diplomcheckbackup/training/outputs_medium_lfw_finetune/best_lfw.pth
+TORCH_MODEL_ARCH=ir50
+TORCH_DEVICE=cuda
+TORCH_USE_FP16=true
+MATCH_THRESHOLD=0.348
+
+CUSTOM_DETECTION_BACKEND=yolo
+YOLO_MODEL_PATH=diplomcheckbackup/training/detector_runs/face_yolo_ft1/weights/best.pt
+CUSTOM_ALLOW_CENTER_CROP=true
+MIN_DET_SCORE=0.5
+
+PRETRAINED_INDEX_PATH=backend/data/index/pretrained.faiss
+CUSTOM_INDEX_PATH=backend/data/index/custom.faiss
+INDEX_PATH=backend/data/index/custom.faiss
+AUTO_SAVE_INDEX=true
+
+API_KEY=REPLACE_WITH_GENERATED_OPERATOR_KEY
+ADMIN_API_KEY=REPLACE_WITH_GENERATED_ADMIN_KEY
+DATA_ENCRYPTION_KEY=REPLACE_WITH_GENERATED_32_BYTE_BASE64_KEY
+SNAPSHOT_ENCRYPTION_KEY=REPLACE_WITH_GENERATED_32_BYTE_BASE64_KEY
+RATE_LIMIT_ENABLED=false
+```
+
+If CUDA is not available, use:
+
+```dotenv
+TORCH_DEVICE=cpu
+TORCH_USE_FP16=false
+```
+
+Do not commit `.env`. Model/checkpoint files, SQLite databases, FAISS indexes,
+embeddings, and biometric images are runtime artifacts and must stay outside git.
+
 ```powershell
 cd backend
 python -m venv .venv
@@ -78,6 +129,14 @@ Health check:
 curl.exe http://127.0.0.1:8000/v1/health
 ```
 
+The current local demo workspace may also have generated helper scripts in
+`$env:TEMP`. They are not part of the repository, but they are convenient when
+the local model bundle and keys are already configured:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\start_diplomawork_backend_custom_best_lfw.ps1"
+```
+
 ### 2. Start the desktop client
 
 Open a second terminal:
@@ -87,7 +146,20 @@ cd desktop
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
+$env:API_BASE_URL="http://127.0.0.1:8000"
+$env:API_KEY="your-operator-key"
+$env:ADMIN_API_KEY="your-admin-key"
+$env:API_TIMEOUT_SEC="45"
+$env:LIVE_MAX_WIDTH="640"
+$env:LIVE_JPEG_QUALITY="75"
 python -m app.main
+```
+
+If the local helper script exists, it can start the desktop with the same demo
+keys:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\start_diplomawork_desktop_custom_demo.ps1"
 ```
 
 ## API keys
@@ -151,8 +223,7 @@ Main pages:
 ### Face Search modes
 
 - `Search` searches one pipeline at a time
-- `Enroll` registers a person in `pretrained`, `custom`, or `both`
-- `Compare` runs both pipelines on the same image and shows side-by-side results
+- `Enroll` registers a person in both available pipelines so the demo database stays synchronized
 
 ### Live webcam
 
@@ -188,7 +259,7 @@ The backend does not store raw photos by default. It stores:
 - FAISS index loading is strict: a missing `.map.json` sidecar is treated as a broken index state
 - operational routes require `API_KEY`
 - delete and rebuild require `ADMIN_API_KEY`
-- in-memory rate limiting protects search, compare, enroll, rebuild, and delete routes; configure it with `RATE_LIMIT_*`
+- in-memory rate limiting protects search, enroll, rebuild, and delete routes; configure it with `RATE_LIMIT_*`
 - distributed deployments need Redis or another external rate limiter because in-memory buckets are per process
 - index snapshots contain biometric template index data, even when encrypted; protect backups and filesystem access carefully
 
@@ -197,7 +268,6 @@ The backend does not store raw photos by default. It stores:
 - `GET /v1/health`
 - `POST /v1/enroll`
 - `POST /v1/search`
-- `POST /v1/search/compare`
 - `GET /v1/persons`
 - `DELETE /v1/persons/{person_id}`
 - `GET /v1/index/stats`
@@ -293,10 +363,6 @@ You are probably inside `desktop/.venv`. Activate `backend/.venv` and run the ba
 ### `GET /v1/persons` returns `500`
 
 Check `DATABASE_URL` and run Alembic migrations for the backend environment.
-
-### Compare mode is unavailable
-
-Open `GET /v1/health` and verify that both `pretrained` and `custom` pipelines are available.
 
 ### The desktop cannot connect to the backend
 

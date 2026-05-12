@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[3]
@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     allow_center_crop: bool = Field(False, alias="ALLOW_CENTER_CROP")
     custom_allow_center_crop: bool = Field(True, alias="CUSTOM_ALLOW_CENTER_CROP")
     min_det_score: float = Field(0.5, alias="MIN_DET_SCORE")
+    min_face_size_px: int = Field(0, ge=0, alias="MIN_FACE_SIZE_PX")
+    min_face_area_ratio: float = Field(0.0, ge=0.0, le=1.0, alias="MIN_FACE_AREA_RATIO")
+    min_face_blur_variance: float = Field(0.0, ge=0.0, alias="MIN_FACE_BLUR_VARIANCE")
 
     # ── vector index ─────────────────────────────────────────────────────
     index_type: Literal["flat", "hnsw", "ivfpq"] = Field("hnsw", alias="INDEX_TYPE")
@@ -117,7 +120,6 @@ class Settings(BaseSettings):
     snapshot_encryption_key: str = Field("", alias="SNAPSHOT_ENCRYPTION_KEY")
     audit_retention_days: int = Field(30, alias="AUDIT_RETENTION_DAYS")
     enable_search_audit: bool = Field(True, alias="ENABLE_SEARCH_AUDIT")
-    enable_compare_audit: bool = Field(True, alias="ENABLE_COMPARE_AUDIT")
     rate_limit_enabled: bool = Field(False, alias="RATE_LIMIT_ENABLED")
     rate_limit_search_per_min: int = Field(60, alias="RATE_LIMIT_SEARCH_PER_MIN")
     rate_limit_enroll_per_min: int = Field(20, alias="RATE_LIMIT_ENROLL_PER_MIN")
@@ -125,6 +127,52 @@ class Settings(BaseSettings):
 
     # ── runtime ──────────────────────────────────────────────────────────
     auto_save_index: bool = Field(True, alias="AUTO_SAVE_INDEX")
+
+    @model_validator(mode="after")
+    def validate_runtime_configuration(self) -> Settings:
+        if self.default_pipeline == "pretrained" and not self.enable_pretrained_pipeline:
+            raise ValueError("DEFAULT_PIPELINE=pretrained requires ENABLE_PRETRAINED_PIPELINE=true")
+        if self.default_pipeline == "custom" and not self.enable_custom_pipeline:
+            raise ValueError("DEFAULT_PIPELINE=custom requires ENABLE_CUSTOM_PIPELINE=true")
+
+        if self.testing:
+            return self
+
+        configured = [
+            (
+                "pretrained",
+                self.enable_pretrained_pipeline,
+                self.pretrained_backend,
+                self.detection_backend,
+            ),
+            (
+                "custom",
+                self.enable_custom_pipeline,
+                self.custom_backend,
+                self.custom_detection_backend,
+            ),
+        ]
+        for pipeline, enabled, backend, detection_backend in configured:
+            if not enabled:
+                continue
+            if backend == "onnx":
+                missing = [
+                    name
+                    for name, value in (
+                        ("ONNX_DETECTOR_PATH", self.onnx_detector_path),
+                        ("ONNX_EMBEDDER_PATH", self.onnx_embedder_path),
+                    )
+                    if not value
+                ]
+                if missing:
+                    raise ValueError(f"{pipeline} ONNX backend requires {', '.join(missing)}")
+            if backend == "torch":
+                if not self.torch_model_path:
+                    raise ValueError(f"{pipeline} torch backend requires TORCH_MODEL_PATH")
+                if detection_backend == "yolo" and not self.yolo_model_path:
+                    raise ValueError(f"{pipeline} YOLO detection requires YOLO_MODEL_PATH")
+
+        return self
 
 
 @lru_cache

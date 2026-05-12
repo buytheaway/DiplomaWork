@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 
 from PySide6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
@@ -63,12 +62,7 @@ class EnrollTab(QWidget):
 
         fc.addSpacing(8)
 
-        fc.addWidget(DimLabel("Pipeline"))
-        self.pipeline_combo = QComboBox()
-        self.pipeline_combo.addItem("Pretrained", "pretrained")
-        self.pipeline_combo.addItem("Custom", "custom")
-        self.pipeline_combo.addItem("Both", "both")
-        fc.addWidget(self.pipeline_combo)
+        fc.addWidget(DimLabel("Pipeline: both pretrained and custom"))
 
         fc.addSpacing(12)
 
@@ -119,10 +113,9 @@ class EnrollTab(QWidget):
             show_warning(self, "Missing", "Select an image file")
             return
         label = self.label_input.text().strip() or None
-        pipeline = self.pipeline_combo.currentData()
         self.enroll_btn.setEnabled(False)
         self.status_label.setText("Enrolling...")
-        self._worker = ApiWorker(self.api.enroll, path, label, pipeline, parent=self)
+        self._worker = ApiWorker(self.api.enroll, path, label, "both", parent=self)
         self._worker.finished.connect(self._on_success)
         self._worker.failed.connect(self._on_error)
         self._worker.start()

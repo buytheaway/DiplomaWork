@@ -7,7 +7,7 @@ import os
 os.environ.setdefault("TESTING", "true")
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
-from app.api.schemas.search import CompareSearchResponse, SearchResponse
+from app.api.schemas.search import SearchResponse
 
 
 def test_search_response_defaults():
@@ -64,12 +64,3 @@ def test_search_response_threshold_boundary():
     )
     assert resp.decision == "match"
     assert resp.best_match_above_threshold is True
-
-
-def test_compare_response_default_lists_are_isolated():
-    first = CompareSearchResponse(k=1)
-    second = CompareSearchResponse(k=1)
-
-    first.available_pipelines.append("pretrained")
-
-    assert second.available_pipelines == []

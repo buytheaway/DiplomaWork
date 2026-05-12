@@ -173,7 +173,6 @@ def test_rate_limit_rules_cover_sensitive_routes():
     settings = get_settings()
 
     assert rate_limit_rule_for_request(settings, "POST", "/v1/search").category == "search"
-    assert rate_limit_rule_for_request(settings, "POST", "/v1/search/compare").category == "search"
     assert rate_limit_rule_for_request(settings, "POST", "/v1/enroll").category == "enroll"
     assert rate_limit_rule_for_request(settings, "POST", "/v1/index/rebuild").category == "admin"
     assert rate_limit_rule_for_request(settings, "DELETE", "/v1/persons/person-1").category == "admin"

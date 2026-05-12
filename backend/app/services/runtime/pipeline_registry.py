@@ -86,7 +86,15 @@ class PipelineRegistry:
         return runtime
 
     def resolve_enroll(self, selection: EnrollSelection | None) -> list[PipelineRuntime]:
-        selected = selection or self.default_pipeline
+        if selection is None:
+            keys = [
+                key
+                for key in ("pretrained", "custom")
+                if key in self._pipelines
+            ]
+            return [self.get(key) for key in keys]
+
+        selected = selection
         if selected == "both":
             return [self.get("pretrained"), self.get("custom")]
         return [self.get(selected)]

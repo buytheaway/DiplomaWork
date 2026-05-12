@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+os.environ.setdefault("TESTING", "true")
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
 from scripts.evaluate_verification_pairs import (
