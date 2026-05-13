@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
-from sqlalchemy import create_engine, delete, func, select
+from sqlalchemy import create_engine, delete, func, or_, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -28,6 +28,35 @@ DEFAULT_MODEL_NAME = "scale_synthetic_512d"
 DEFAULT_LABEL_PREFIX = "Scale Person"
 DEFAULT_SEED = 42
 LARGE_COUNT_THRESHOLD = 10_000
+LABEL_STYLES = ("numbered", "realistic")
+FIRST_NAMES = (
+    "Aidar",
+    "Aigerim",
+    "Miras",
+    "Dana",
+    "Arman",
+    "Aruzhan",
+    "Sanjar",
+    "Madina",
+    "Dias",
+    "Kamila",
+    "Nursultan",
+    "Alina",
+)
+LAST_NAMES = (
+    "Sarsenov",
+    "Nurlanova",
+    "Tulegenov",
+    "Akhmetova",
+    "Omarov",
+    "Kasenova",
+    "Zhaksylykov",
+    "Ibragimova",
+    "Muratov",
+    "Bekturova",
+    "Iskakov",
+    "Karimova",
+)
 
 
 @dataclass(frozen=True)
@@ -39,6 +68,7 @@ class SeedConfig:
     pipeline: str = DEFAULT_PIPELINE
     model_name: str = DEFAULT_MODEL_NAME
     label_prefix: str = DEFAULT_LABEL_PREFIX
+    label_style: str = "numbered"
     seed: int = DEFAULT_SEED
     replace_existing: bool = False
     dry_run: bool = False
@@ -124,19 +154,32 @@ def validate_seed_request(config: SeedConfig) -> None:
         raise ValueError("--model-name must not be empty")
     if not config.label_prefix.strip():
         raise ValueError("--label-prefix must not be empty")
+    if config.label_style not in LABEL_STYLES:
+        raise ValueError(f"--label-style must be one of: {', '.join(LABEL_STYLES)}")
 
 
-def _label_for(prefix: str, index: int, width: int) -> str:
-    return f"{prefix} {index:0{width}d}"
+def _label_for(config: SeedConfig, index: int, width: int) -> str:
+    if config.label_style == "numbered":
+        return f"{config.label_prefix} {index:0{width}d}"
+
+    first = FIRST_NAMES[(index - 1) % len(FIRST_NAMES)]
+    last = LAST_NAMES[((index - 1) // len(FIRST_NAMES) + index - 1) % len(LAST_NAMES)]
+    return f"{first} {last} #SCALE-{index:0{width}d}"
 
 
 def _person_uuid(config: SeedConfig, index: int) -> uuid.UUID:
-    source = f"{config.pipeline}:{config.model_name}:{config.label_prefix}:{index}"
+    source = (
+        f"{config.pipeline}:{config.model_name}:"
+        f"{config.label_prefix}:{config.label_style}:{index}"
+    )
     return uuid.uuid5(uuid.NAMESPACE_URL, source)
 
 
 def _embedding_uuid(config: SeedConfig, index: int) -> uuid.UUID:
-    source = f"embedding:{config.pipeline}:{config.model_name}:{config.label_prefix}:{index}"
+    source = (
+        f"embedding:{config.pipeline}:{config.model_name}:"
+        f"{config.label_prefix}:{config.label_style}:{index}"
+    )
     return uuid.uuid5(uuid.NAMESPACE_URL, source)
 
 
@@ -148,9 +191,20 @@ def _generate_vectors(rng: np.random.RandomState, batch_count: int, dim: int) ->
 
 
 def _scale_person_stmt(config: SeedConfig):
-    return select(Person.id).where(
+    label_filter = or_(
         Person.label.like(f"{config.label_prefix} %"),
-        Person.status == "active",
+        Person.label.like("%#SCALE-%"),
+    )
+    return (
+        select(Person.id)
+        .join(Embedding, Embedding.person_id == Person.id)
+        .where(
+            label_filter,
+            Person.status == "active",
+            Embedding.pipeline == config.pipeline,
+            Embedding.model == config.model_name,
+        )
+        .distinct()
     )
 
 
@@ -170,16 +224,18 @@ def _count_existing_scale_rows(db: Session, config: SeedConfig) -> tuple[int, in
 
 
 def _delete_existing_scale_rows(db: Session, config: SeedConfig) -> tuple[int, int]:
-    person_ids = _scale_person_stmt(config).subquery()
+    person_ids = list(db.execute(_scale_person_stmt(config)).scalars())
+    if not person_ids:
+        return 0, 0
     embeddings_deleted = db.execute(
         delete(Embedding).where(
-            Embedding.person_id.in_(select(person_ids.c.id)),
+            Embedding.person_id.in_(person_ids),
             Embedding.pipeline == config.pipeline,
             Embedding.model == config.model_name,
         )
     ).rowcount
     persons_deleted = db.execute(
-        delete(Person).where(Person.id.in_(select(person_ids.c.id)))
+        delete(Person).where(Person.id.in_(person_ids))
     ).rowcount
     return int(persons_deleted or 0), int(embeddings_deleted or 0)
 
@@ -204,7 +260,7 @@ def _insert_batch(
         persons.append(
             {
                 "id": person_id,
-                "label": _label_for(config.label_prefix, index, width),
+                "label": _label_for(config, index, width),
                 "status": "active",
                 "created_at": now,
                 "updated_at": now,
@@ -308,6 +364,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pipeline", default=DEFAULT_PIPELINE)
     parser.add_argument("--model-name", default=DEFAULT_MODEL_NAME)
     parser.add_argument("--label-prefix", default=DEFAULT_LABEL_PREFIX)
+    parser.add_argument(
+        "--label-style",
+        choices=LABEL_STYLES,
+        default="numbered",
+        help="numbered keeps old labels; realistic uses deterministic synthetic names",
+    )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--replace-existing", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -325,6 +387,7 @@ def main() -> None:
         pipeline=args.pipeline,
         model_name=args.model_name,
         label_prefix=args.label_prefix,
+        label_style=args.label_style,
         seed=args.seed,
         replace_existing=args.replace_existing,
         dry_run=args.dry_run,

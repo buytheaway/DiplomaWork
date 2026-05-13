@@ -21,13 +21,14 @@ logger = logging.getLogger(__name__)
 def list_persons(
     limit: int = Query(200, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    q: str | None = Query(None, max_length=100),
     db: Session = Depends(get_db),
 ) -> PersonListResponse:
     repo = PersonRepo(db)
-    persons = repo.list_active(limit=limit, offset=offset)
+    persons = repo.list_active(limit=limit, offset=offset, q=q)
     return PersonListResponse(
         items=[PersonListItem.model_validate(p) for p in persons],
-        total=repo.count_active(),
+        total=repo.count_active(q=q),
         limit=limit,
         offset=offset,
     )

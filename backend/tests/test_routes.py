@@ -478,6 +478,67 @@ def test_list_persons_limit_offset_pages_active_rows(client, db_session):
     assert len(body["items"]) == 1
 
 
+def test_list_persons_search_filters_total_and_items(client, db_session):
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            Person(label="Aidar Sarsenov #SCALE-000001", created_at=now),
+            Person(label="Aidar Omarov #SCALE-000002", created_at=now + timedelta(seconds=1)),
+            Person(label="Miras Tulegenov #SCALE-000003", created_at=now + timedelta(seconds=2)),
+            Person(
+                label="Aidar Deleted #SCALE-000004",
+                status="deleted",
+                created_at=now + timedelta(seconds=3),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    resp = client.get("/v1/persons", params={"q": "Aidar", "limit": 1, "offset": 0})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 2
+    assert body["limit"] == 1
+    assert body["offset"] == 0
+    assert len(body["items"]) == 1
+    assert "Aidar" in body["items"][0]["label"]
+
+
+def test_list_persons_search_paginates_matching_rows(client, db_session):
+    now = datetime.now(UTC)
+    for idx in range(3):
+        db_session.add(
+            Person(
+                label=f"Scale Match {idx}",
+                created_at=now + timedelta(seconds=idx),
+                updated_at=now + timedelta(seconds=idx),
+            )
+        )
+    db_session.add(Person(label="Other Person", created_at=now + timedelta(seconds=10)))
+    db_session.commit()
+
+    resp = client.get("/v1/persons", params={"q": "Scale Match", "limit": 1, "offset": 1})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 3
+    assert body["limit"] == 1
+    assert body["offset"] == 1
+    assert len(body["items"]) == 1
+    assert body["items"][0]["label"].startswith("Scale Match")
+
+
+def test_list_persons_search_by_exact_person_id(client, db_session):
+    person = Person(label="Exact Id Search")
+    db_session.add(person)
+    db_session.commit()
+
+    resp = client.get("/v1/persons", params={"q": str(person.id)})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == str(person.id)
+
+
 def test_list_persons_rejects_limit_above_max(client):
     resp = client.get("/v1/persons", params={"limit": 501})
     assert resp.status_code == 422

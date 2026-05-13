@@ -74,6 +74,57 @@ def test_seed_scale_database_dry_run_does_not_write(tmp_path):
     assert embeddings_count == 0
 
 
+def test_seed_scale_database_realistic_labels_are_deterministic(tmp_path):
+    database_url = _sqlite_url(tmp_path)
+    engine = _create_schema(database_url)
+
+    result = seed_database(
+        SeedConfig(
+            database_url=database_url,
+            count=3,
+            batch_size=2,
+            label_style="realistic",
+        )
+    )
+
+    session_factory = sessionmaker(bind=engine, future=True)
+    with session_factory() as db:
+        labels = list(db.execute(select(Person.label)).scalars())
+
+    assert result.inserted_persons == 3
+    assert all(label is not None for label in labels)
+    assert all("#SCALE-" in str(label) for label in labels)
+    assert "Aidar Sarsenov #SCALE-000000001" in labels
+    assert "Aigerim Nurlanova #SCALE-000000002" in labels
+    assert "Miras Tulegenov #SCALE-000000003" in labels
+    assert not all(str(label).startswith("Scale Person ") for label in labels)
+
+
+def test_seed_scale_database_replace_can_switch_numbered_to_realistic(tmp_path):
+    database_url = _sqlite_url(tmp_path)
+    engine = _create_schema(database_url)
+
+    seed_database(SeedConfig(database_url=database_url, count=2))
+    result = seed_database(
+        SeedConfig(
+            database_url=database_url,
+            count=3,
+            label_style="realistic",
+            replace_existing=True,
+        )
+    )
+
+    session_factory = sessionmaker(bind=engine, future=True)
+    with session_factory() as db:
+        labels = list(db.execute(select(Person.label)).scalars())
+        embeddings_count = db.execute(select(func.count()).select_from(Embedding)).scalar_one()
+
+    assert result.inserted_persons == 3
+    assert len(labels) == 3
+    assert embeddings_count == 3
+    assert all("#SCALE-" in str(label) for label in labels)
+
+
 def test_seed_scale_database_requires_yes_for_large_count(tmp_path):
     config = SeedConfig(
         database_url=_sqlite_url(tmp_path),
@@ -82,4 +133,3 @@ def test_seed_scale_database_requires_yes_for_large_count(tmp_path):
 
     with pytest.raises(ValueError, match="Pass --yes"):
         validate_seed_request(config)
-

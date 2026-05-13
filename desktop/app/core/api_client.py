@@ -191,10 +191,18 @@ class ApiClient:
     def get_person(self, person_id: str) -> dict[str, Any]:
         return self._request_json("GET", f"{self.base_url}/v1/persons/{person_id}")
 
-    def list_persons(self, limit: int = 200, offset: int = 0) -> dict[str, Any]:
+    def list_persons(
+        self,
+        limit: int = 200,
+        offset: int = 0,
+        q: str | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if q:
+            params["q"] = q
         payload = self._request_json(
             "GET", f"{self.base_url}/v1/persons",
-            params={"limit": limit, "offset": offset},
+            params=params,
         )
         if isinstance(payload, list):
             return {

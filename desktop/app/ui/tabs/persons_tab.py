@@ -42,6 +42,7 @@ class PersonsTab(QWidget):
         self._current_offset = 0
         self._page_size = 200
         self._total_count = 0
+        self._search_query = ""
         self._loaded_once = False
         self._selected_id: str | None = None
         self._detail_payload = ""
@@ -65,8 +66,12 @@ class PersonsTab(QWidget):
         filter_row = QHBoxLayout()
         filter_row.setSpacing(10)
         self.filter_input = QLineEdit()
-        self.filter_input.setPlaceholderText("Filter current page by label or person ID")
-        self.filter_input.textChanged.connect(self._render_table)
+        self.filter_input.setPlaceholderText("Search all records by label or ID")
+        self.filter_input.returnPressed.connect(self._apply_search)
+        self.search_btn = ActionButton("Search")
+        self.search_btn.clicked.connect(self._apply_search)
+        self.clear_search_btn = ActionButton("Clear search")
+        self.clear_search_btn.clicked.connect(self._clear_search)
         self.person_id_input = QLineEdit()
         self.person_id_input.setPlaceholderText("Open by person ID")
         self.get_btn = ActionButton("Open")
@@ -74,6 +79,8 @@ class PersonsTab(QWidget):
         self.refresh_btn = ActionButton("Refresh", primary=True)
         self.refresh_btn.clicked.connect(self._load_list)
         filter_row.addWidget(self.filter_input, 2)
+        filter_row.addWidget(self.search_btn)
+        filter_row.addWidget(self.clear_search_btn)
         filter_row.addWidget(self.person_id_input, 2)
         filter_row.addWidget(self.get_btn)
         filter_row.addWidget(self.refresh_btn)
@@ -89,11 +96,19 @@ class PersonsTab(QWidget):
         self.page_size_combo.addItems(["50", "100", "200", "500"])
         self.page_size_combo.setCurrentText(str(self._page_size))
         self.page_size_combo.currentTextChanged.connect(self._on_page_size_changed)
+        self.page_input = QLineEdit()
+        self.page_input.setPlaceholderText("Page")
+        self.page_input.returnPressed.connect(self._jump_to_page)
+        self.go_page_btn = ActionButton("Go")
+        self.go_page_btn.clicked.connect(self._jump_to_page)
         self.page_status = DimLabel("No records loaded.")
         page_row.addWidget(self.prev_btn)
         page_row.addWidget(self.next_btn)
         page_row.addWidget(DimLabel("Page size"))
         page_row.addWidget(self.page_size_combo)
+        page_row.addWidget(DimLabel("Jump"))
+        page_row.addWidget(self.page_input)
+        page_row.addWidget(self.go_page_btn)
         page_row.addWidget(self.page_status, 1)
         root.addLayout(page_row)
 
@@ -170,10 +185,14 @@ class PersonsTab(QWidget):
 
     def _run(self, func, *args, on_success) -> None:
         self.refresh_btn.setEnabled(False)
+        self.search_btn.setEnabled(False)
+        self.clear_search_btn.setEnabled(False)
         self.get_btn.setEnabled(False)
         self.prev_btn.setEnabled(False)
         self.next_btn.setEnabled(False)
         self.page_size_combo.setEnabled(False)
+        self.page_input.setEnabled(False)
+        self.go_page_btn.setEnabled(False)
         self.delete_btn.setEnabled(False)
         self.export_btn.setEnabled(False)
         self._worker = ApiWorker(func, *args, parent=self)
@@ -191,17 +210,33 @@ class PersonsTab(QWidget):
         if self._worker is not None and self._worker.isRunning():
             return
         self.refresh_btn.setEnabled(True)
+        self.search_btn.setEnabled(True)
+        self.clear_search_btn.setEnabled(True)
         self.get_btn.setEnabled(True)
         self.page_size_combo.setEnabled(True)
+        self.page_input.setEnabled(True)
+        self.go_page_btn.setEnabled(self._total_count > 0)
         self.prev_btn.setEnabled(self._current_offset > 0)
         self.next_btn.setEnabled(self._current_offset + self._page_size < self._total_count)
 
+    def _current_page(self) -> int:
+        return self._current_offset // max(1, self._page_size) + 1
+
+    def _total_pages(self) -> int:
+        if self._total_count <= 0:
+            return 1
+        return (self._total_count - 1) // max(1, self._page_size) + 1
+
     def _page_range_text(self) -> str:
         if self._total_count <= 0:
-            return "No records"
+            return "No matching records" if self._search_query else "No records"
         first = self._current_offset + 1
         last = min(self._current_offset + len(self._current_items), self._total_count)
-        return f"Showing {first:,}-{last:,} of {self._total_count:,}"
+        noun = "matching records" if self._search_query else "records"
+        return (
+            f"Showing {first:,}-{last:,} of {self._total_count:,} {noun} "
+            f"- Page {self._current_page():,} of {self._total_pages():,}"
+        )
 
     def _clear_detail(self, message: str = "Select a row to inspect details.") -> None:
         self.selection_label.setText(message)
@@ -216,6 +251,8 @@ class PersonsTab(QWidget):
 
     def _on_error(self, error: str) -> None:
         self.refresh_btn.setEnabled(True)
+        self.search_btn.setEnabled(True)
+        self.clear_search_btn.setEnabled(True)
         self.get_btn.setEnabled(True)
         self._sync_action_state()
         self.page_status.setText(f"Failed to load records: {error}")
@@ -229,6 +266,7 @@ class PersonsTab(QWidget):
             self.api.list_persons,
             self._page_size,
             self._current_offset,
+            self._search_query or None,
             on_success=self._on_list_loaded,
         )
 
@@ -251,10 +289,39 @@ class PersonsTab(QWidget):
         if self._loaded_once:
             self._load_list()
 
+    def _apply_search(self) -> None:
+        self._search_query = self.filter_input.text().strip()
+        self._current_offset = 0
+        self._load_list()
+
+    def _clear_search(self) -> None:
+        if not self.filter_input.text().strip() and not self._search_query:
+            return
+        self.filter_input.setText("")
+        self._search_query = ""
+        self._current_offset = 0
+        self._load_list()
+
+    def _jump_to_page(self) -> None:
+        raw_value = self.page_input.text().strip()
+        if not raw_value:
+            return
+        try:
+            requested_page = int(raw_value)
+        except ValueError:
+            requested_page = self._current_page()
+        target_page = max(1, min(requested_page, self._total_pages()))
+        self.page_input.setText(str(target_page))
+        self._current_offset = (target_page - 1) * self._page_size
+        self._load_list()
+
     def _on_list_loaded(self, result: object) -> None:
         self.refresh_btn.setEnabled(True)
+        self.search_btn.setEnabled(True)
+        self.clear_search_btn.setEnabled(True)
         self.get_btn.setEnabled(True)
         self.page_size_combo.setEnabled(True)
+        self.page_input.setEnabled(True)
         self.status_label.setText("")
         if not isinstance(result, dict):
             return
@@ -273,6 +340,7 @@ class PersonsTab(QWidget):
             self._load_list()
             return
         self.count_pill.set_state("ok", f"{self._total_count:,} records")
+        self.page_input.setText(str(self._current_page()))
         self._render_table()
         self._sync_action_state()
         self.page_status.setText(self._page_range_text())
@@ -283,13 +351,7 @@ class PersonsTab(QWidget):
         )
 
     def _render_table(self) -> None:
-        query = self.filter_input.text().strip().lower()
-        self._visible_persons = []
-        for person in self._current_items:
-            label = (person.get("label") or "").lower()
-            person_id = str(person.get("id", "")).lower()
-            if not query or query in label or query in person_id:
-                self._visible_persons.append(person)
+        self._visible_persons = list(self._current_items)
 
         self.table.setRowCount(len(self._visible_persons))
         for row, person in enumerate(self._visible_persons):
@@ -303,12 +365,9 @@ class PersonsTab(QWidget):
                 self.table.setItem(row, col, QTableWidgetItem(value))
 
         if not self._visible_persons:
-            hint = "No records match the current page filter." if query else "No records"
+            hint = "No records match the current search." if self._search_query else "No records"
         else:
-            hint = (
-                f"{self._page_range_text()} "
-                f"({len(self._visible_persons)} visible after current-page filter)."
-            )
+            hint = self._page_range_text()
         self.table_hint.setText(hint)
         self.table.clearSelection()
 
@@ -427,3 +486,5 @@ class PersonsTab(QWidget):
 
     def apply_global_filter(self, text: str) -> None:
         self.filter_input.setText(text)
+        if self._loaded_once:
+            self._apply_search()

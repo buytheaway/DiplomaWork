@@ -5,7 +5,7 @@ from collections.abc import Collection, Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import AuditLog, Embedding, IndexSnapshot, Person
@@ -40,18 +40,42 @@ class PersonRepo:
         stmt = select(Person).where(Person.id == person_id).options(joinedload(Person.embeddings))
         return self.db.execute(stmt).scalars().first()
 
-    def list_active(self, limit: int = 200, offset: int = 0) -> list[Person]:
+    def _active_filters(self, q: str | None = None) -> list:
+        filters = [Person.status == "active"]
+        normalized = (q or "").strip()
+        if not normalized:
+            return filters
+
+        escaped = (
+            normalized.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        search_filters = [Person.label.ilike(f"%{escaped}%", escape="\\")]
+        try:
+            search_filters.append(Person.id == uuid.UUID(normalized))
+        except ValueError:
+            pass
+        filters.append(or_(*search_filters))
+        return filters
+
+    def list_active(
+        self,
+        limit: int = 200,
+        offset: int = 0,
+        q: str | None = None,
+    ) -> list[Person]:
         stmt = (
             select(Person)
-            .where(Person.status == "active")
+            .where(*self._active_filters(q))
             .order_by(Person.created_at.desc())
             .limit(limit)
             .offset(offset)
         )
         return list(self.db.execute(stmt).scalars().all())
 
-    def count_active(self) -> int:
-        stmt = select(func.count()).select_from(Person).where(Person.status == "active")
+    def count_active(self, q: str | None = None) -> int:
+        stmt = select(func.count()).select_from(Person).where(*self._active_filters(q))
         return int(self.db.execute(stmt).scalar_one())
 
     def soft_delete(self, person_id: str) -> bool:
