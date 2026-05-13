@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_pipeline_registry, require_admin
-from app.api.schemas.persons import PersonListItem, PersonResponse
+from app.api.schemas.persons import PersonListItem, PersonListResponse, PersonResponse
 from app.services.runtime.pipeline_registry import PipelineRegistry
 from app.services.storage.audit import record_audit_event
 from app.services.storage.repositories import PersonRepo
@@ -17,15 +17,20 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/persons", response_model=list[PersonListItem])
+@router.get("/persons", response_model=PersonListResponse)
 def list_persons(
-    limit: int = 200,
-    offset: int = 0,
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-) -> list[PersonListItem]:
+) -> PersonListResponse:
     repo = PersonRepo(db)
     persons = repo.list_active(limit=limit, offset=offset)
-    return [PersonListItem.model_validate(p) for p in persons]
+    return PersonListResponse(
+        items=[PersonListItem.model_validate(p) for p in persons],
+        total=repo.count_active(),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/persons/{person_id}", response_model=PersonResponse)

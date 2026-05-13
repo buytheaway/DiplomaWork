@@ -6,6 +6,8 @@ session and wires up the full FastAPI app with ``DummyEmbeddingExtractor``.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -399,7 +401,12 @@ def test_enroll_rejects_unsupported_content_type(client):
 def test_list_persons_empty(client):
     resp = client.get("/v1/persons")
     assert resp.status_code == 200
-    assert resp.json() == []
+    assert resp.json() == {
+        "items": [],
+        "total": 0,
+        "limit": 200,
+        "offset": 0,
+    }
 
 
 def test_list_persons_after_enroll(client):
@@ -411,10 +418,69 @@ def test_list_persons_after_enroll(client):
     resp = client.get("/v1/persons")
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body) >= 1
-    assert body[0]["label"] == "ListTest"
+    assert body["total"] >= 1
+    assert body["limit"] == 200
+    assert body["offset"] == 0
+    assert len(body["items"]) >= 1
+    assert body["items"][0]["label"] == "ListTest"
     # Должен быть без embeddings (это list-endpoint)
-    assert "embeddings" not in body[0]
+    assert "embeddings" not in body["items"][0]
+
+
+def test_list_persons_total_uses_all_active_rows_not_page_size(client, db_session):
+    now = datetime.now(UTC)
+    for idx in range(3):
+        db_session.add(
+            Person(
+                label=f"PagePerson{idx}",
+                created_at=now + timedelta(seconds=idx),
+                updated_at=now + timedelta(seconds=idx),
+            )
+        )
+    db_session.add(
+        Person(
+            label="DeletedPagePerson",
+            status="deleted",
+            created_at=now + timedelta(seconds=10),
+            updated_at=now + timedelta(seconds=10),
+        )
+    )
+    db_session.commit()
+
+    resp = client.get("/v1/persons", params={"limit": 2, "offset": 0})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 3
+    assert body["limit"] == 2
+    assert body["offset"] == 0
+    assert len(body["items"]) == 2
+    assert all(item["status"] == "active" for item in body["items"])
+
+
+def test_list_persons_limit_offset_pages_active_rows(client, db_session):
+    now = datetime.now(UTC)
+    for idx in range(3):
+        db_session.add(
+            Person(
+                label=f"OffsetPerson{idx}",
+                created_at=now + timedelta(seconds=idx),
+                updated_at=now + timedelta(seconds=idx),
+            )
+        )
+    db_session.commit()
+
+    resp = client.get("/v1/persons", params={"limit": 1, "offset": 1})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 3
+    assert body["limit"] == 1
+    assert body["offset"] == 1
+    assert len(body["items"]) == 1
+
+
+def test_list_persons_rejects_limit_above_max(client):
+    resp = client.get("/v1/persons", params={"limit": 501})
+    assert resp.status_code == 422
 
 
 def test_get_person_after_enroll(client):

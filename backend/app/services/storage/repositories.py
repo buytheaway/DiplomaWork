@@ -5,7 +5,7 @@ from collections.abc import Collection, Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import AuditLog, Embedding, IndexSnapshot, Person
@@ -49,6 +49,10 @@ class PersonRepo:
             .offset(offset)
         )
         return list(self.db.execute(stmt).scalars().all())
+
+    def count_active(self) -> int:
+        stmt = select(func.count()).select_from(Person).where(Person.status == "active")
+        return int(self.db.execute(stmt).scalar_one())
 
     def soft_delete(self, person_id: str) -> bool:
         person = self.get(person_id)

@@ -39,6 +39,13 @@ class PersonListItem(BaseModel):
         return str(v) if isinstance(v, uuid.UUID) else v  # type: ignore[return-value]
 
 
+class PersonListResponse(BaseModel):
+    items: list[PersonListItem]
+    total: int
+    limit: int
+    offset: int
+
+
 class PersonResponse(BaseModel):
     id: str
     label: str | None
