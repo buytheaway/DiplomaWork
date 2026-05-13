@@ -117,13 +117,22 @@ class DashboardTab(QWidget):
         if not isinstance(payload, dict):
             return
         health = payload.get("health", {})
-        persons = payload.get("persons", [])
+        persons_payload = payload.get("persons", {})
         stats = payload.get("stats", {})
+        if isinstance(persons_payload, dict):
+            persons = persons_payload.get("items", [])
+            profile_total = int(persons_payload.get("total", 0) or 0)
+        elif isinstance(persons_payload, list):
+            persons = persons_payload
+            profile_total = len(persons)
+        else:
+            persons = []
+            profile_total = 0
 
         pipelines = [str(item) for item in health.get("available_pipelines", [])]
         total_vectors = sum(int(stats.get(name, {}).get("embeddings_count", 0)) for name in pipelines)
         self.metric_pipelines.set_value(str(len(pipelines)), ", ".join(pipelines) if pipelines else "Unavailable")
-        self.metric_profiles.set_value(str(len(persons)), "Active records")
+        self.metric_profiles.set_value(f"{profile_total:,}", "Active records")
         self.metric_vectors.set_value(str(total_vectors), f"Default: {health.get('default_pipeline', '-')}")
 
         pretrained = stats.get("pretrained", {})

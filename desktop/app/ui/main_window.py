@@ -3,7 +3,15 @@ from __future__ import annotations
 from functools import partial
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.core.api_client import ApiClient
 from app.core.config import DesktopSettings

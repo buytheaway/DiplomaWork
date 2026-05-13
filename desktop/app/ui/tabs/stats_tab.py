@@ -4,8 +4,8 @@ import json
 import time
 
 from PySide6.QtWidgets import (
-    QFileDialog,
     QComboBox,
+    QFileDialog,
     QHBoxLayout,
     QLineEdit,
     QTableWidget,
@@ -18,7 +18,15 @@ from app.core.api_client import ApiClient
 from app.core.worker import ApiWorker
 from app.ui.activity import export_events_csv, recent_events, record_event
 from app.ui.dialogs import show_error, show_warning
-from app.ui.widgets import ActionButton, Card, CollapsibleSection, ConsoleView, DimLabel, MetricCard, SectionHeading
+from app.ui.widgets import (
+    ActionButton,
+    Card,
+    CollapsibleSection,
+    ConsoleView,
+    DimLabel,
+    MetricCard,
+    SectionHeading,
+)
 
 
 class StatsTab(QWidget):

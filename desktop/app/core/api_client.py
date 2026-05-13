@@ -114,7 +114,7 @@ class ApiClient:
             merged.setdefault("X-API-Key", api_key)
         return merged
 
-    def _request_json(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+    def _request_json(self, method: str, url: str, **kwargs: Any) -> Any:
         admin = bool(kwargs.pop("admin", False))
         headers = self._build_headers(kwargs.pop("headers", None), admin=admin)
         response = requests.request(
@@ -191,11 +191,27 @@ class ApiClient:
     def get_person(self, person_id: str) -> dict[str, Any]:
         return self._request_json("GET", f"{self.base_url}/v1/persons/{person_id}")
 
-    def list_persons(self, limit: int = 200, offset: int = 0) -> list[dict[str, Any]]:
-        return self._request_json(
+    def list_persons(self, limit: int = 200, offset: int = 0) -> dict[str, Any]:
+        payload = self._request_json(
             "GET", f"{self.base_url}/v1/persons",
             params={"limit": limit, "offset": offset},
         )
+        if isinstance(payload, list):
+            return {
+                "items": payload,
+                "total": len(payload),
+                "limit": limit,
+                "offset": offset,
+            }
+        if isinstance(payload, dict):
+            items = payload.get("items", [])
+            return {
+                "items": items if isinstance(items, list) else [],
+                "total": int(payload.get("total", 0) or 0),
+                "limit": int(payload.get("limit", limit) or limit),
+                "offset": int(payload.get("offset", offset) or offset),
+            }
+        return {"items": [], "total": 0, "limit": limit, "offset": offset}
 
     def delete_person(self, person_id: str) -> dict[str, Any]:
         return self._request_json(

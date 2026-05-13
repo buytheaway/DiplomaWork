@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import csv
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-import csv
 
 
 @dataclass(slots=True)
