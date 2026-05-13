@@ -1,0 +1,133 @@
+{
+  "meta": {
+    "environment": {
+      "timestamp_utc": "2026-05-13T21:01:44.553635+00:00",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+      "machine": "AMD64",
+      "cpu_count": 20,
+      "python": "3.12.10",
+      "numpy": "2.4.2",
+      "faiss": "1.13.2",
+      "faiss_threads": 20
+    },
+    "config": {
+      "sizes": [
+        1000000
+      ],
+      "dim": 512,
+      "n_queries": 50,
+      "seed": 42,
+      "query_seed": 123,
+      "methods": [
+        "hnsw",
+        "ivfpq"
+      ],
+      "k_values": [
+        1,
+        5,
+        10
+      ],
+      "output_dir": "training\\outputs\\scale_benchmark_1m",
+      "tmp_dir": "tmp\\scale_benchmark_1m",
+      "batch_size": 50000,
+      "train_size": 200000,
+      "latency_warmup": 5,
+      "latency_runs": 100,
+      "hnsw": {
+        "M": 32,
+        "efConstruction": 150,
+        "efSearch": 128
+      },
+      "ivfpq": {
+        "nlist": 4096,
+        "M_pq": 32,
+        "nbits": 8,
+        "nprobe": 32
+      }
+    }
+  },
+  "results": [
+    {
+      "method": "hnsw",
+      "params": {
+        "M": 32,
+        "efConstruction": 150,
+        "efSearch": 128,
+        "metric": "inner_product",
+        "normalized_vectors": true
+      },
+      "status": "ok",
+      "build_time_s": 982.189322,
+      "index_file_size_mb": 2212.647921,
+      "memory_estimate_mb": 2212.647921,
+      "latency": {
+        "mean_ms": 1.74034,
+        "p50_ms": 1.7385,
+        "p95_ms": 2.304975,
+        "p99_ms": 2.52379
+      },
+      "top_k_overlap": {
+        "top_k_overlap@1": 0.86,
+        "top_k_overlap@5": 0.244,
+        "top_k_overlap@10": 0.168
+      },
+      "notes": "",
+      "error": "",
+      "source": "synthetic_memmap",
+      "n_vectors": 1000000,
+      "dim": 512,
+      "n_queries": 50,
+      "seed": 42,
+      "query_seed": 123,
+      "k_values": [
+        1,
+        5,
+        10
+      ],
+      "batch_size": 50000
+    },
+    {
+      "method": "ivfpq",
+      "params": {
+        "nlist": 4096,
+        "requested_nlist": 4096,
+        "M_pq": 32,
+        "nbits": 8,
+        "nprobe": 32,
+        "train_size": 200000,
+        "metric": "inner_product",
+        "normalized_vectors": true
+      },
+      "status": "ok",
+      "build_time_s": 38.337446,
+      "index_file_size_mb": 46.678394,
+      "memory_estimate_mb": 46.678394,
+      "latency": {
+        "mean_ms": 0.353613,
+        "p50_ms": 0.34785,
+        "p95_ms": 0.392,
+        "p99_ms": 0.466494
+      },
+      "top_k_overlap": {
+        "top_k_overlap@1": 1.0,
+        "top_k_overlap@5": 0.208,
+        "top_k_overlap@10": 0.108
+      },
+      "notes": "",
+      "error": "",
+      "source": "synthetic_memmap",
+      "n_vectors": 1000000,
+      "dim": 512,
+      "n_queries": 50,
+      "seed": 42,
+      "query_seed": 123,
+      "k_values": [
+        1,
+        5,
+        10
+      ],
+      "batch_size": 50000
+    }
+  ]
+}

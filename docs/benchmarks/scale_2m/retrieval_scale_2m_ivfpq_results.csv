@@ -1,0 +1,2 @@
+source,n_vectors,dim,n_queries,seed,query_seed,method,status,params,build_time_s,mean_ms,p50_ms,p95_ms,p99_ms,memory_estimate_mb,index_file_size_mb,top_k_overlap_at_1,top_k_overlap_at_5,top_k_overlap_at_10,notes,error
+synthetic_memmap,2000000,512,50,42,123,ivfpq,ok,"{""M_pq"":32,""metric"":""inner_product"",""nbits"":8,""nlist"":4096,""normalized_vectors"":true,""nprobe"":32,""requested_nlist"":4096,""train_size"":200000}",54.552124,0.968592,1.0966,1.142425,1.159439,84.825367,84.825367,1.0,0.208,0.104,,
