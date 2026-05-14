@@ -78,6 +78,9 @@ class PersonRepo:
         stmt = select(func.count()).select_from(Person).where(*self._active_filters(q))
         return int(self.db.execute(stmt).scalar_one())
 
+    def count_active_persons(self) -> int:
+        return self.count_active()
+
     def soft_delete(self, person_id: str) -> bool:
         person = self.get(person_id)
         if person is None:
@@ -176,6 +179,35 @@ class EmbeddingRepo:
         if pipeline is not None:
             stmt = stmt.where(Embedding.pipeline == pipeline)
         return list(self.db.execute(stmt).scalars().all())
+
+    def count_active_embeddings(self) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(Embedding)
+            .join(Person, Embedding.person_id == Person.id)
+            .where(
+                Embedding.is_active.is_(True),
+                Person.status == "active",
+            )
+        )
+        return int(self.db.execute(stmt).scalar_one())
+
+    def count_active_embeddings_by_pipeline_model(self) -> list[tuple[str, str, int]]:
+        stmt = (
+            select(Embedding.pipeline, Embedding.model, func.count())
+            .select_from(Embedding)
+            .join(Person, Embedding.person_id == Person.id)
+            .where(
+                Embedding.is_active.is_(True),
+                Person.status == "active",
+            )
+            .group_by(Embedding.pipeline, Embedding.model)
+            .order_by(Embedding.pipeline, Embedding.model)
+        )
+        return [
+            (str(pipeline), str(model), int(count))
+            for pipeline, model, count in self.db.execute(stmt).all()
+        ]
 
     def get_embeddings_with_person(
         self,

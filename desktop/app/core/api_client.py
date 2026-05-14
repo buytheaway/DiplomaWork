@@ -171,6 +171,9 @@ class ApiClient:
             params={"pipeline": pipeline},
         )
 
+    def database_stats(self) -> dict[str, Any]:
+        return self._request_json("GET", f"{self.base_url}/v1/database/stats")
+
     def rebuild_index(
         self,
         index_type: str,

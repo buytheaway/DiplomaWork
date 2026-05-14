@@ -39,11 +39,13 @@ class DashboardTab(QWidget):
         metrics.setHorizontalSpacing(14)
         metrics.setVerticalSpacing(14)
         self.metric_pipelines = MetricCard("Pipelines", "-")
-        self.metric_profiles = MetricCard("Profiles", "-")
+        self.metric_profiles = MetricCard("Active identities", "-")
+        self.metric_templates = MetricCard("Active templates", "-")
         self.metric_vectors = MetricCard("Indexed vectors", "-")
         metrics.addWidget(self.metric_pipelines, 0, 0)
         metrics.addWidget(self.metric_profiles, 0, 1)
-        metrics.addWidget(self.metric_vectors, 0, 2)
+        metrics.addWidget(self.metric_templates, 0, 2)
+        metrics.addWidget(self.metric_vectors, 0, 3)
         root.addLayout(metrics)
 
         main_row = QHBoxLayout()
@@ -100,10 +102,11 @@ class DashboardTab(QWidget):
     def _gather_dashboard(self) -> dict:
         health = self.api.health()
         persons = self.api.list_persons()
+        database_stats = self.api.database_stats()
         stats = {}
         for pipeline in health.get("available_pipelines", []):
             stats[pipeline] = self.api.index_stats(pipeline)
-        return {"health": health, "persons": persons, "stats": stats}
+        return {"health": health, "persons": persons, "database_stats": database_stats, "stats": stats}
 
     def _load(self) -> None:
         if self._worker is not None and self._worker.isRunning():
@@ -118,6 +121,7 @@ class DashboardTab(QWidget):
             return
         health = payload.get("health", {})
         persons_payload = payload.get("persons", {})
+        database_stats = payload.get("database_stats", {})
         stats = payload.get("stats", {})
         if isinstance(persons_payload, dict):
             persons = persons_payload.get("items", [])
@@ -130,10 +134,12 @@ class DashboardTab(QWidget):
             profile_total = 0
 
         pipelines = [str(item) for item in health.get("available_pipelines", [])]
+        active_embeddings = int(database_stats.get("active_embeddings", 0) or 0)
         total_vectors = sum(int(stats.get(name, {}).get("embeddings_count", 0)) for name in pipelines)
         self.metric_pipelines.set_value(str(len(pipelines)), ", ".join(pipelines) if pipelines else "Unavailable")
-        self.metric_profiles.set_value(f"{profile_total:,}", "Active records")
-        self.metric_vectors.set_value(str(total_vectors), f"Default: {health.get('default_pipeline', '-')}")
+        self.metric_profiles.set_value(f"{profile_total:,}", "Active persons")
+        self.metric_templates.set_value(f"{active_embeddings:,}", "Active embeddings")
+        self.metric_vectors.set_value(f"{total_vectors:,}", f"Default: {health.get('default_pipeline', '-')}")
 
         pretrained = stats.get("pretrained", {})
         custom = stats.get("custom", {})
@@ -147,6 +153,7 @@ class DashboardTab(QWidget):
                     f"Default pipeline: {health.get('default_pipeline', '-')}",
                     f"Multi-face search: {health.get('multi_face_search', False)}",
                     f"Single-face enroll: {health.get('strict_single_face_enroll', False)}",
+                    f"Database templates: {active_embeddings:,} active embeddings",
                     f"Pretrained index: {pretrained.get('embeddings_count', 0)} vectors",
                     f"Custom index: {custom.get('embeddings_count', 0)} vectors",
                     f"Latest profile: {(persons[0].get('label') if persons else 'No records yet')}",
@@ -186,6 +193,7 @@ class DashboardTab(QWidget):
     def _on_error(self, error: str) -> None:
         self.metric_pipelines.set_value("-", "Request failed")
         self.metric_profiles.set_value("-", "")
+        self.metric_templates.set_value("-", "")
         self.metric_vectors.set_value("-", "")
         show_error(self, "Dashboard refresh failed", error)
 

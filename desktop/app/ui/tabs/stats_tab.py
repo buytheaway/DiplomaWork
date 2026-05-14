@@ -52,9 +52,11 @@ class StatsTab(QWidget):
         metrics.setSpacing(14)
         self.metric_backend = MetricCard("Backend", "-")
         self.metric_default = MetricCard("Default pipeline", "-")
+        self.metric_templates = MetricCard("DB templates", "-")
         self.metric_vectors = MetricCard("Indexed vectors", "-")
         metrics.addWidget(self.metric_backend, 1)
         metrics.addWidget(self.metric_default, 1)
+        metrics.addWidget(self.metric_templates, 1)
         metrics.addWidget(self.metric_vectors, 1)
         root.addLayout(metrics)
 
@@ -130,10 +132,11 @@ class StatsTab(QWidget):
 
     def _snapshot(self) -> dict:
         health = self.api.health()
+        database_stats = self.api.database_stats()
         stats = {}
         for pipeline in health.get("available_pipelines", []):
             stats[pipeline] = self.api.index_stats(pipeline)
-        return {"health": health, "stats": stats}
+        return {"health": health, "database_stats": database_stats, "stats": stats}
 
     def _run(self, func, *args, on_success) -> None:
         self._started = time.perf_counter()
@@ -157,13 +160,16 @@ class StatsTab(QWidget):
             return
         self._stats_payload = payload
         health = payload.get("health", {})
+        database_stats = payload.get("database_stats", {})
         stats = payload.get("stats", {})
 
         available = [str(v) for v in health.get("available_pipelines", [])]
+        active_embeddings = int(database_stats.get("active_embeddings", 0) or 0)
         total_vectors = sum(int(stats.get(name, {}).get("embeddings_count", 0)) for name in available)
         self.metric_backend.set_value(health.get("embedding_backend", "-"), health.get("model_name", "-"))
         self.metric_default.set_value(str(health.get("default_pipeline", "-")).title(), ", ".join(available))
-        self.metric_vectors.set_value(str(total_vectors), "Across loaded pipelines")
+        self.metric_templates.set_value(f"{active_embeddings:,}", "Active DB embeddings")
+        self.metric_vectors.set_value(f"{total_vectors:,}", "Across loaded pipelines")
 
         self._render_events()
         self.stats_view.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False, default=str))

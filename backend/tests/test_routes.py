@@ -544,6 +544,70 @@ def test_list_persons_rejects_limit_above_max(client):
     assert resp.status_code == 422
 
 
+def test_database_stats_empty(client):
+    resp = client.get("/v1/database/stats")
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "active_persons": 0,
+        "active_embeddings": 0,
+        "embeddings_by_pipeline_model": [],
+    }
+
+
+def test_database_stats_counts_active_records_and_groups(client, db_session):
+    active_person = Person(label="Active Identity")
+    deleted_person = Person(label="Deleted Identity", status="deleted")
+    db_session.add_all([active_person, deleted_person])
+    db_session.flush()
+    db_session.add_all(
+        [
+            Embedding(
+                person_id=active_person.id,
+                pipeline="pretrained",
+                model="model_a",
+                dim=4,
+                vector=b"\0" * 16,
+                is_active=True,
+            ),
+            Embedding(
+                person_id=active_person.id,
+                pipeline="custom",
+                model="model_b",
+                dim=4,
+                vector=b"\0" * 16,
+                is_active=True,
+            ),
+            Embedding(
+                person_id=active_person.id,
+                pipeline="pretrained",
+                model="model_a",
+                dim=4,
+                vector=b"\0" * 16,
+                is_active=False,
+            ),
+            Embedding(
+                person_id=deleted_person.id,
+                pipeline="pretrained",
+                model="model_a",
+                dim=4,
+                vector=b"\0" * 16,
+                is_active=True,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    resp = client.get("/v1/database/stats")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["active_persons"] == 1
+    assert body["active_embeddings"] == 2
+    assert body["embeddings_by_pipeline_model"] == [
+        {"pipeline": "custom", "model_name": "model_b", "count": 1},
+        {"pipeline": "pretrained", "model_name": "model_a", "count": 1},
+    ]
+
+
 def test_get_person_after_enroll(client):
     enroll_resp = client.post(
         "/v1/enroll",

@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
-from app.api.routes import enroll, health, index, persons, search
+from app.api.routes import database, enroll, health, index, persons, search
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.security.auth import classify_api_key
@@ -153,6 +153,7 @@ def create_app() -> FastAPI:
     app.include_router(enroll.router, prefix=settings.api_v1_prefix)
     app.include_router(search.router, prefix=settings.api_v1_prefix)
     app.include_router(persons.router, prefix=settings.api_v1_prefix)
+    app.include_router(database.router, prefix=settings.api_v1_prefix)
     app.include_router(index.router, prefix=settings.api_v1_prefix)
 
     return app

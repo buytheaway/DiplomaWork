@@ -42,6 +42,8 @@ class PersonsTab(QWidget):
         self._current_offset = 0
         self._page_size = 200
         self._total_count = 0
+        self._templates_count = 0
+        self._indexed_count = 0
         self._search_query = ""
         self._loaded_once = False
         self._selected_id: str | None = None
@@ -60,7 +62,11 @@ class PersonsTab(QWidget):
         header_row.addLayout(title_col)
         header_row.addStretch()
         self.count_pill = StatusPill("0 records", state="idle")
+        self.templates_pill = StatusPill("0 templates", state="idle")
+        self.indexed_pill = StatusPill("0 indexed", state="idle")
         header_row.addWidget(self.count_pill)
+        header_row.addWidget(self.templates_pill)
+        header_row.addWidget(self.indexed_pill)
         root.addLayout(header_row)
 
         filter_row = QHBoxLayout()
@@ -263,12 +269,27 @@ class PersonsTab(QWidget):
     def _load_list(self) -> None:
         self.status_label.setText("Refreshing records...")
         self._run(
-            self.api.list_persons,
+            self._load_database_page,
+            on_success=self._on_list_loaded,
+        )
+
+    def _load_database_page(self) -> dict:
+        persons = self.api.list_persons(
             self._page_size,
             self._current_offset,
             self._search_query or None,
-            on_success=self._on_list_loaded,
         )
+        database_stats = self.api.database_stats()
+        health = self.api.health()
+        indexed_count = 0
+        for pipeline in health.get("available_pipelines", []):
+            stats = self.api.index_stats(str(pipeline))
+            indexed_count += int(stats.get("embeddings_count", 0) or 0)
+        return {
+            "persons": persons,
+            "database_stats": database_stats,
+            "indexed_count": indexed_count,
+        }
 
     def _load_previous_page(self) -> None:
         self._current_offset = max(0, self._current_offset - self._page_size)
@@ -325,11 +346,20 @@ class PersonsTab(QWidget):
         self.status_label.setText("")
         if not isinstance(result, dict):
             return
-        items = result.get("items", [])
+        persons_payload = result.get("persons", result)
+        if not isinstance(persons_payload, dict):
+            return
+        database_stats = result.get("database_stats", {})
+        if not isinstance(database_stats, dict):
+            database_stats = {}
+        self._templates_count = int(database_stats.get("active_embeddings", 0) or 0)
+        self._indexed_count = int(result.get("indexed_count", 0) or 0)
+
+        items = persons_payload.get("items", [])
         self._current_items = items if isinstance(items, list) else []
-        self._total_count = int(result.get("total", 0) or 0)
-        self._page_size = int(result.get("limit", self._page_size) or self._page_size)
-        self._current_offset = int(result.get("offset", self._current_offset) or 0)
+        self._total_count = int(persons_payload.get("total", 0) or 0)
+        self._page_size = int(persons_payload.get("limit", self._page_size) or self._page_size)
+        self._current_offset = int(persons_payload.get("offset", self._current_offset) or 0)
         self._loaded_once = True
         if (
             self._total_count > 0
@@ -339,7 +369,9 @@ class PersonsTab(QWidget):
             self._current_offset = ((self._total_count - 1) // self._page_size) * self._page_size
             self._load_list()
             return
-        self.count_pill.set_state("ok", f"{self._total_count:,} records")
+        self.count_pill.set_state("ok", f"{self._total_count:,} identities")
+        self.templates_pill.set_state("ok", f"{self._templates_count:,} templates")
+        self.indexed_pill.set_state("ok", f"{self._indexed_count:,} indexed")
         self.page_input.setText(str(self._current_page()))
         self._render_table()
         self._sync_action_state()
