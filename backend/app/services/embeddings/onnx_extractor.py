@@ -499,6 +499,17 @@ class OnnxEmbeddingExtractor(EmbeddingExtractor):
 
         return embeddings
 
+    def extract_largest_embedding(self, image_bytes: bytes) -> FaceEmbedding:
+        image, boxes, kps, scores = self._decode_and_detect(image_bytes)
+        areas = np.maximum(0.0, boxes[:, 2] - boxes[:, 0]) * np.maximum(0.0, boxes[:, 3] - boxes[:, 1])
+        best_idx = int(np.argmax(areas))
+        return self._extract_face_embedding(
+            image=image,
+            box=boxes[best_idx],
+            landmarks=None if kps is None else kps[best_idx],
+            score=float(scores[best_idx]),
+        )
+
     def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
         # Early check: reject multi-face images before expensive embedding step.
         if self.strict_single_face:

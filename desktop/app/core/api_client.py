@@ -153,12 +153,25 @@ class ApiClient:
                 data["label"] = label
             return self._request_json("POST", f"{self.base_url}/v1/enroll", files=files, data=data)
 
-    def search(self, image_path: str | bytes, k: int, pipeline: str = "pretrained") -> dict[str, Any]:
+    def search(
+        self,
+        image_path: str | bytes,
+        k: int,
+        pipeline: str = "pretrained",
+        *,
+        source: str | None = None,
+        multi_face: bool | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"k": k, "pipeline": pipeline}
+        if source:
+            params["source"] = source
+        if multi_face is not None:
+            params["multi_face"] = str(bool(multi_face)).lower()
         with self._image_file(image_path) as files:
             return self._request_json(
                 "POST",
                 f"{self.base_url}/v1/search",
-                params={"k": k, "pipeline": pipeline},
+                params=params,
                 files=files,
             )
 

@@ -86,7 +86,7 @@ def test_enroll_both_pipelines(client):
     assert {item["pipeline"] for item in body["enrollments"]} == {"pretrained", "custom"}
 
 
-def test_enroll_same_label_reuses_person_and_rebuilds_pipelines(client, db_session):
+def test_enroll_same_label_reuses_person_and_adds_samples_without_rebuild(client, db_session):
     first_resp = client.post(
         "/v1/enroll",
         files={"file": ("face.jpg", b"\x89PNG_duplicate_one", "image/jpeg")},
@@ -113,19 +113,13 @@ def test_enroll_same_label_reuses_person_and_rebuilds_pipelines(client, db_sessi
             Embedding.is_active.is_(True),
         )
     ).scalars().all()
-    inactive_embeddings = db_session.execute(
-        select(Embedding).where(
-            Embedding.person_id == active_people[0].id,
-            Embedding.is_active.is_(False),
-        )
-    ).scalars().all()
     assert {item.pipeline for item in active_embeddings} == {"pretrained", "custom"}
-    assert len(inactive_embeddings) == 2
+    assert len(active_embeddings) == 4
 
     pretrained_stats = client.get("/v1/index/stats", params={"pipeline": "pretrained"})
     custom_stats = client.get("/v1/index/stats", params={"pipeline": "custom"})
-    assert pretrained_stats.json()["embeddings_count"] == 1
-    assert custom_stats.json()["embeddings_count"] == 1
+    assert pretrained_stats.json()["embeddings_count"] == 2
+    assert custom_stats.json()["embeddings_count"] == 2
 
 
 def test_enroll_empty_file_returns_400(client):
@@ -318,7 +312,7 @@ class _NoFaceDummyExtractor(DummyEmbeddingExtractor):
         raise NoFaceDetectedError("No face detected in image")
 
 
-def test_search_multiple_faces_returns_face_indexes(client):
+def test_search_multiple_faces_assigns_same_identity_once_to_best_face(client):
     client.post(
         "/v1/enroll",
         files={"file": ("a.jpg", b"\x89PNG_multi_enroll", "image/jpeg")},
@@ -343,7 +337,8 @@ def test_search_multiple_faces_returns_face_indexes(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["faces_detected"] == 2
-    assert {item["face_index"] for item in body["results"]} == {0, 1}
+    assert [item["face_index"] for item in body["results"]] == [0]
+    assert body["matched_faces"] == 1
     assert all("detection_score" in item for item in body["results"])
 
 
@@ -668,7 +663,7 @@ def test_delete_person_removes_results_from_index(client):
     assert search_resp.json()["results"] == []
 
 
-def test_delete_person_rebuilds_only_affected_pipeline(client, db_session):
+def test_delete_person_defers_index_rebuild_for_affected_pipeline(client, db_session):
     pre_resp = client.post(
         "/v1/enroll",
         files={"file": ("pre.jpg", b"\x89PNG_delete_pre", "image/jpeg")},
@@ -686,6 +681,8 @@ def test_delete_person_rebuilds_only_affected_pipeline(client, db_session):
 
     delete_resp = client.delete(f"/v1/persons/{custom_person_id}")
     assert delete_resp.status_code == 200
+    assert delete_resp.json()["affected_pipelines"] == ["custom"]
+    assert delete_resp.json()["index_update"] == "deferred"
 
     log = db_session.execute(
         select(AuditLog)
@@ -693,7 +690,8 @@ def test_delete_person_rebuilds_only_affected_pipeline(client, db_session):
         .order_by(AuditLog.created_at.desc())
     ).scalars().first()
     assert log is not None
-    assert log.details["rebuilt_pipelines"] == ["custom"]
+    assert log.details["affected_pipelines"] == ["custom"]
+    assert log.details["index_update"] == "deferred"
 
     search_resp = client.post(
         "/v1/search",

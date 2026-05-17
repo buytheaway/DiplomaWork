@@ -18,6 +18,12 @@ from app.core.api_client import ApiClient
 from app.core.worker import ApiWorker
 from app.ui.activity import export_events_csv, recent_events, record_event
 from app.ui.dialogs import show_error, show_warning
+from app.ui.tabs.counts import (
+    count_for_pipeline,
+    pipeline_index_counts,
+    pipeline_template_counts,
+    selected_pipeline,
+)
 from app.ui.widgets import (
     ActionButton,
     Card,
@@ -52,8 +58,8 @@ class StatsTab(QWidget):
         metrics.setSpacing(14)
         self.metric_backend = MetricCard("Backend", "-")
         self.metric_default = MetricCard("Default pipeline", "-")
-        self.metric_templates = MetricCard("DB templates", "-")
-        self.metric_vectors = MetricCard("Indexed vectors", "-")
+        self.metric_templates = MetricCard("Default templates", "-")
+        self.metric_vectors = MetricCard("Default indexed", "-")
         metrics.addWidget(self.metric_backend, 1)
         metrics.addWidget(self.metric_default, 1)
         metrics.addWidget(self.metric_templates, 1)
@@ -164,15 +170,28 @@ class StatsTab(QWidget):
         stats = payload.get("stats", {})
 
         available = [str(v) for v in health.get("available_pipelines", [])]
-        active_embeddings = int(database_stats.get("active_embeddings", 0) or 0)
-        total_vectors = sum(int(stats.get(name, {}).get("embeddings_count", 0)) for name in available)
+        template_counts = pipeline_template_counts(database_stats)
+        index_counts = pipeline_index_counts(stats)
+        default_pipeline = selected_pipeline(health, template_counts or index_counts)
+        default_templates = count_for_pipeline(template_counts, default_pipeline)
+        default_vectors = count_for_pipeline(index_counts, default_pipeline)
         self.metric_backend.set_value(health.get("embedding_backend", "-"), health.get("model_name", "-"))
         self.metric_default.set_value(str(health.get("default_pipeline", "-")).title(), ", ".join(available))
-        self.metric_templates.set_value(f"{active_embeddings:,}", "Active DB embeddings")
-        self.metric_vectors.set_value(f"{total_vectors:,}", "Across loaded pipelines")
+        self.metric_templates.set_value(f"{default_templates:,}", f"{default_pipeline} templates")
+        self.metric_vectors.set_value(f"{default_vectors:,}", f"{default_pipeline} index")
 
         self._render_events()
-        self.stats_view.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+        display_payload = {
+            "shared_database_identities": database_stats.get("active_persons", 0),
+            "default_pipeline": default_pipeline,
+            "templates_by_pipeline": template_counts,
+            "indexed_vectors_by_pipeline": index_counts,
+            "health": health,
+            "index_stats": stats,
+        }
+        self.stats_view.setPlainText(
+            json.dumps(display_payload, indent=2, ensure_ascii=False, default=str)
+        )
         record_event("logs", "System snapshot refreshed", severity="INFO")
 
     def _render_events(self) -> None:

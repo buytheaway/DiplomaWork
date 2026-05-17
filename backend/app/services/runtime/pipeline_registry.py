@@ -165,11 +165,18 @@ class PipelineRegistry:
             detection_backend = self._settings.custom_detection_backend
             allow_center_crop = self._settings.custom_allow_center_crop
 
-        return self._settings.model_copy(
-            update={
-                "embedding_backend": backend,
-                "index_path": index_path,
-                "detection_backend": detection_backend,
-                "allow_center_crop": allow_center_crop,
-            }
-        )
+        updates = {
+            "embedding_backend": backend,
+            "index_path": index_path,
+            "detection_backend": detection_backend,
+            "allow_center_crop": allow_center_crop,
+        }
+        if key == "custom":
+            if self._settings.custom_min_det_score is not None:
+                updates["min_det_score"] = self._settings.custom_min_det_score
+            if self._settings.custom_face_crop_margin is not None:
+                updates["face_crop_margin"] = self._settings.custom_face_crop_margin
+            if self._settings.custom_yolo_imgsz is not None:
+                updates["yolo_imgsz"] = self._settings.custom_yolo_imgsz
+
+        return self._settings.model_copy(update=updates)

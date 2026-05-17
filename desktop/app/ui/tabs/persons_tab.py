@@ -20,6 +20,12 @@ from app.core.api_client import ApiClient
 from app.core.worker import ApiWorker
 from app.ui.activity import record_event
 from app.ui.dialogs import show_error, show_warning
+from app.ui.tabs.counts import (
+    count_for_pipeline,
+    pipeline_index_counts,
+    pipeline_template_counts,
+    selected_pipeline,
+)
 from app.ui.widgets import (
     ActionButton,
     Card,
@@ -58,12 +64,12 @@ class PersonsTab(QWidget):
         header_row = QHBoxLayout()
         title_col = QVBoxLayout()
         title_col.addWidget(SectionHeading("Database"))
-        title_col.addWidget(DimLabel("Browse active records and inspect person metadata."))
+        title_col.addWidget(DimLabel("Browse the shared identity database and inspect metadata."))
         header_row.addLayout(title_col)
         header_row.addStretch()
         self.count_pill = StatusPill("0 records", state="idle")
-        self.templates_pill = StatusPill("0 templates", state="idle")
-        self.indexed_pill = StatusPill("0 indexed", state="idle")
+        self.templates_pill = StatusPill("0 default templates", state="idle")
+        self.indexed_pill = StatusPill("0 default indexed", state="idle")
         header_row.addWidget(self.count_pill)
         header_row.addWidget(self.templates_pill)
         header_row.addWidget(self.indexed_pill)
@@ -281,14 +287,20 @@ class PersonsTab(QWidget):
         )
         database_stats = self.api.database_stats()
         health = self.api.health()
-        indexed_count = 0
+        stats = {}
         for pipeline in health.get("available_pipelines", []):
-            stats = self.api.index_stats(str(pipeline))
-            indexed_count += int(stats.get("embeddings_count", 0) or 0)
+            stats[str(pipeline)] = self.api.index_stats(str(pipeline))
+        template_counts = pipeline_template_counts(database_stats)
+        index_counts = pipeline_index_counts(stats)
+        default_pipeline = selected_pipeline(health, template_counts or index_counts)
         return {
             "persons": persons,
             "database_stats": database_stats,
-            "indexed_count": indexed_count,
+            "template_counts": template_counts,
+            "index_counts": index_counts,
+            "default_pipeline": default_pipeline,
+            "default_templates": count_for_pipeline(template_counts, default_pipeline),
+            "default_indexed": count_for_pipeline(index_counts, default_pipeline),
         }
 
     def _load_previous_page(self) -> None:
@@ -349,11 +361,9 @@ class PersonsTab(QWidget):
         persons_payload = result.get("persons", result)
         if not isinstance(persons_payload, dict):
             return
-        database_stats = result.get("database_stats", {})
-        if not isinstance(database_stats, dict):
-            database_stats = {}
-        self._templates_count = int(database_stats.get("active_embeddings", 0) or 0)
-        self._indexed_count = int(result.get("indexed_count", 0) or 0)
+        default_pipeline = str(result.get("default_pipeline") or "-")
+        self._templates_count = int(result.get("default_templates", 0) or 0)
+        self._indexed_count = int(result.get("default_indexed", 0) or 0)
 
         items = persons_payload.get("items", [])
         self._current_items = items if isinstance(items, list) else []
@@ -370,8 +380,8 @@ class PersonsTab(QWidget):
             self._load_list()
             return
         self.count_pill.set_state("ok", f"{self._total_count:,} identities")
-        self.templates_pill.set_state("ok", f"{self._templates_count:,} templates")
-        self.indexed_pill.set_state("ok", f"{self._indexed_count:,} indexed")
+        self.templates_pill.set_state("ok", f"{self._templates_count:,} {default_pipeline} templates")
+        self.indexed_pill.set_state("ok", f"{self._indexed_count:,} {default_pipeline} indexed")
         self.page_input.setText(str(self._current_page()))
         self._render_table()
         self._sync_action_state()

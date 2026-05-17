@@ -9,6 +9,13 @@ from app.core.api_client import ApiClient
 from app.core.worker import ApiWorker
 from app.ui.activity import recent_events
 from app.ui.dialogs import show_error
+from app.ui.tabs.counts import (
+    count_for_pipeline,
+    format_pipeline_counts,
+    pipeline_index_counts,
+    pipeline_template_counts,
+    selected_pipeline,
+)
 from app.ui.widgets import ActionButton, Card, DimLabel, MetricCard, SectionHeading
 
 
@@ -40,8 +47,8 @@ class DashboardTab(QWidget):
         metrics.setVerticalSpacing(14)
         self.metric_pipelines = MetricCard("Pipelines", "-")
         self.metric_profiles = MetricCard("Active identities", "-")
-        self.metric_templates = MetricCard("Active templates", "-")
-        self.metric_vectors = MetricCard("Indexed vectors", "-")
+        self.metric_templates = MetricCard("Default templates", "-")
+        self.metric_vectors = MetricCard("Default indexed", "-")
         metrics.addWidget(self.metric_pipelines, 0, 0)
         metrics.addWidget(self.metric_profiles, 0, 1)
         metrics.addWidget(self.metric_templates, 0, 2)
@@ -134,12 +141,15 @@ class DashboardTab(QWidget):
             profile_total = 0
 
         pipelines = [str(item) for item in health.get("available_pipelines", [])]
-        active_embeddings = int(database_stats.get("active_embeddings", 0) or 0)
-        total_vectors = sum(int(stats.get(name, {}).get("embeddings_count", 0)) for name in pipelines)
+        template_counts = pipeline_template_counts(database_stats)
+        index_counts = pipeline_index_counts(stats)
+        default_pipeline = selected_pipeline(health, template_counts or index_counts)
+        default_templates = count_for_pipeline(template_counts, default_pipeline)
+        default_vectors = count_for_pipeline(index_counts, default_pipeline)
         self.metric_pipelines.set_value(str(len(pipelines)), ", ".join(pipelines) if pipelines else "Unavailable")
-        self.metric_profiles.set_value(f"{profile_total:,}", "Active persons")
-        self.metric_templates.set_value(f"{active_embeddings:,}", "Active embeddings")
-        self.metric_vectors.set_value(f"{total_vectors:,}", f"Default: {health.get('default_pipeline', '-')}")
+        self.metric_profiles.set_value(f"{profile_total:,}", "Shared person records")
+        self.metric_templates.set_value(f"{default_templates:,}", f"{default_pipeline} templates")
+        self.metric_vectors.set_value(f"{default_vectors:,}", f"{default_pipeline} index")
 
         pretrained = stats.get("pretrained", {})
         custom = stats.get("custom", {})
@@ -150,12 +160,14 @@ class DashboardTab(QWidget):
         self.overview_lines.setText(
             "\n".join(
                 [
-                    f"Default pipeline: {health.get('default_pipeline', '-')}",
+                    f"Default pipeline: {default_pipeline}",
                     f"Multi-face search: {health.get('multi_face_search', False)}",
                     f"Single-face enroll: {health.get('strict_single_face_enroll', False)}",
-                    f"Database templates: {active_embeddings:,} active embeddings",
-                    f"Pretrained index: {pretrained.get('embeddings_count', 0)} vectors",
-                    f"Custom index: {custom.get('embeddings_count', 0)} vectors",
+                    f"Shared database identities: {profile_total:,}",
+                    f"Templates by pipeline: {format_pipeline_counts(template_counts)}",
+                    f"Indexed vectors by pipeline: {format_pipeline_counts(index_counts)}",
+                    f"Pretrained index: {pretrained.get('embeddings_count', 0):,} vectors",
+                    f"Custom index: {custom.get('embeddings_count', 0):,} vectors",
                     f"Latest profile: {(persons[0].get('label') if persons else 'No records yet')}",
                 ]
             )

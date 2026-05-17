@@ -38,7 +38,6 @@ class FaissIndex(VectorIndex):
             m = int(self.params.get("m", 32))
             base = faiss.IndexHNSWFlat(self.dim, m, metric)
             base.hnsw.efConstruction = int(self.params.get("ef_construction", 200))
-            base.hnsw.efSearch = int(self.params.get("ef_search", 64))
         elif self.index_type == "ivfpq":
             nlist = int(self.params.get("nlist", 100))
             m = int(self.params.get("m", 16))
@@ -48,7 +47,18 @@ class FaissIndex(VectorIndex):
         else:
             raise ValueError(f"Unsupported index type: {self.index_type}")
 
+        self._apply_runtime_params(base)
         return faiss.IndexIDMap2(base)
+
+    def _apply_runtime_params(self, index: Any, params: dict[str, Any] | None = None) -> None:
+        active_params = self.params if params is None else {**self.params, **params}
+        base = getattr(index, "index", index)
+        if self.index_type == "hnsw" and hasattr(base, "hnsw"):
+            base.hnsw.efSearch = int(active_params.get("ef_search", 64))
+        if self.index_type == "ivfpq" and hasattr(base, "nprobe"):
+            nprobe = int(active_params.get("nprobe", 1))
+            nlist = int(active_params.get("nlist", nprobe))
+            base.nprobe = max(1, min(nprobe, nlist))
 
     def _normalize(self, vector: np.ndarray) -> np.ndarray:
         vec = vector.astype(np.float32)
@@ -67,11 +77,18 @@ class FaissIndex(VectorIndex):
             self._index.add_with_ids(vec, ids)
         return vector_id
 
-    def search(self, vector: np.ndarray, k: int) -> list[VectorSearchResult]:
+    def search(
+        self,
+        vector: np.ndarray,
+        k: int,
+        search_params: dict[str, Any] | None = None,
+    ) -> list[VectorSearchResult]:
         if self.count() == 0:
             return []
         vec = self._normalize(vector).reshape(1, -1).astype(np.float32)
         with self._lock:
+            if search_params:
+                self._apply_runtime_params(self._index, search_params)
             distances, ids = self._index.search(vec, k)
             id_map_snapshot = dict(self._id_map)
         results: list[VectorSearchResult] = []
@@ -119,6 +136,7 @@ class FaissIndex(VectorIndex):
                 )
 
             self._index = loaded_index
+            self._apply_runtime_params(self._index)
             self._id_map = loaded_map
             self._next_id = max(self._id_map.keys(), default=-1) + 1
 
@@ -144,9 +162,15 @@ class FaissIndex(VectorIndex):
                 is_trained = bool(self._index.index.is_trained)
             except Exception:
                 is_trained = False
+        runtime_params: dict[str, Any] = dict(self.params)
+        base = getattr(self._index, "index", self._index)
+        if self.index_type == "ivfpq" and hasattr(base, "nprobe"):
+            runtime_params["nprobe"] = int(base.nprobe)
+        if self.index_type == "hnsw" and hasattr(base, "hnsw"):
+            runtime_params["ef_search"] = int(base.hnsw.efSearch)
         return {
             "index_type": self.index_type,
-            "params": self.params,
+            "params": runtime_params,
             "embeddings_count": self.count(),
             "memory_estimate": memory_bytes,
             "memory_estimate_bytes": memory_bytes,

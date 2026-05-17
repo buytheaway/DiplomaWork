@@ -77,24 +77,9 @@ async def enroll(
         else None
     )
     reused_person = person is not None
-    runtime_keys = {runtime_key for runtime_key, _model_name, _embedding in computed}
-    affected_pipelines: set[str] = set()
 
     if person is None:
         person = person_repo.create(label=normalized_label)
-    elif normalized_label is not None:
-        affected_pipelines.update(
-            embedding_repo.deactivate_active_for_person(
-                person.id,
-                pipelines=runtime_keys,
-            )
-        )
-        affected_pipelines.update(
-            person_repo.soft_delete_duplicate_labels(
-                normalized_label,
-                str(person.id),
-            )
-        )
     db.flush()
 
     saved_rows: list[tuple[str, str, object, object]] = []
@@ -119,24 +104,15 @@ async def enroll(
         for runtime_key, _model_name, _embedding, _embedding_row in saved_rows:
             touched_pipelines.add(runtime_key)
 
-        if reused_person or affected_pipelines:
-            available = set(registry.available_pipelines())
-            for runtime_key in touched_pipelines.union(affected_pipelines):
-                if runtime_key not in available:
-                    continue
-                runtime = registry.get(runtime_key)  # type: ignore[arg-type]
-                runtime.index_manager.rebuild_current(db)
-            db.commit()
-        else:
-            for runtime_key, _model_name, embedding, embedding_row in saved_rows:
-                runtime = registry.get(runtime_key)  # type: ignore[arg-type]
-                runtime.index_manager.add_embedding(str(embedding_row.id), embedding)
+        for runtime_key, _model_name, embedding, embedding_row in saved_rows:
+            runtime = registry.get(runtime_key)  # type: ignore[arg-type]
+            runtime.index_manager.add_embedding(str(embedding_row.id), embedding)
 
-            if settings.auto_save_index:
-                for runtime_key in touched_pipelines:
-                    runtime = registry.get(runtime_key)  # type: ignore[arg-type]
-                    runtime.index_manager.save_snapshot(db)
-                db.commit()
+        if settings.auto_save_index:
+            for runtime_key in touched_pipelines:
+                runtime = registry.get(runtime_key)  # type: ignore[arg-type]
+                runtime.index_manager.save_snapshot(db)
+            db.commit()
     except Exception as exc:  # pragma: no cover - exercised in real runtime
         for _, _, _, embedding_row in saved_rows:
             embedding_repo.deactivate(embedding_row.id)

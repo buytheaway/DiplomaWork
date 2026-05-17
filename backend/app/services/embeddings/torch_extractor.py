@@ -30,6 +30,7 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         self.min_face_size_px = settings.min_face_size_px
         self.min_face_area_ratio = settings.min_face_area_ratio
         self.min_face_blur_variance = settings.min_face_blur_variance
+        self.face_crop_margin = settings.face_crop_margin
         self.allow_center_crop = settings.allow_center_crop
         self.input_size = settings.torch_input_size
         self.use_fp16 = settings.torch_use_fp16
@@ -62,7 +63,12 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
             yolo_path = Path(settings.yolo_model_path)
             if not yolo_path.is_absolute():
                 yolo_path = BASE_DIR / yolo_path
-            self.detector = YoloFaceDetector(str(yolo_path), conf_threshold=settings.min_det_score)
+            self.detector = YoloFaceDetector(
+                str(yolo_path),
+                conf_threshold=settings.min_det_score,
+                imgsz=settings.yolo_imgsz,
+                device=str(self.device),
+            )
         elif settings.detection_backend == "opencv":
             self.detector = OpenCVHaarDetector()
         else:
@@ -82,8 +88,9 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         )
 
         try:
+            align_bbox = self._expanded_bbox(image, face.bbox)
             aligned = align_with_landmarks(
-                image, face.kps, self.allow_center_crop, bbox=face.bbox
+                image, face.kps, self.allow_center_crop, bbox=align_bbox
             )
         except AlignmentError as exc:
             raise NoFaceDetectedError(str(exc)) from exc
@@ -120,6 +127,26 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
             bbox=bbox,
         )
 
+    def _expanded_bbox(self, image: np.ndarray, bbox: np.ndarray | None) -> np.ndarray | None:
+        if bbox is None or len(bbox) < 4 or self.face_crop_margin <= 0.0:
+            return bbox
+
+        height, width = image.shape[:2]
+        x1, y1, x2, y2 = [float(value) for value in bbox[:4]]
+        box_w = max(0.0, x2 - x1)
+        box_h = max(0.0, y2 - y1)
+        margin_x = box_w * self.face_crop_margin
+        margin_y = box_h * self.face_crop_margin
+        return np.array(
+            [
+                max(0.0, x1 - margin_x),
+                max(0.0, y1 - margin_y),
+                min(float(width), x2 + margin_x),
+                min(float(height), y2 + margin_y),
+            ],
+            dtype=np.float32,
+        )
+
     def extract_embeddings(self, image_bytes: bytes) -> list[FaceEmbedding]:
         if not image_bytes:
             raise InvalidImageError("Empty image bytes")
@@ -145,6 +172,23 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
             raise NoFaceDetectedError("No valid face crops could be embedded")
 
         return embeddings
+
+    def extract_largest_embedding(self, image_bytes: bytes) -> FaceEmbedding:
+        if not image_bytes:
+            raise InvalidImageError("Empty image bytes")
+
+        image = decode_image(image_bytes)
+        faces = self.detector.detect(image)
+        if not faces:
+            raise NoFaceDetectedError("No face detected")
+
+        def area(face) -> float:
+            if face.bbox is None:
+                return 0.0
+            x1, y1, x2, y2 = [float(value) for value in face.bbox[:4]]
+            return max(0.0, x2 - x1) * max(0.0, y2 - y1)
+
+        return self._extract_face_embedding(image, max(faces, key=area))
 
     def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
         # Early check: reject multi-face images before expensive embedding step.

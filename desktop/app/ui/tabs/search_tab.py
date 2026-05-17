@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
 
 try:
@@ -14,6 +15,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QGridLayout,
@@ -28,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.core.api_client import ApiClient
+from app.core.api_client import ApiClient, format_api_error
 from app.core.config import DesktopSettings
 from app.core.worker import ApiWorker
 from app.ui.activity import record_event
@@ -36,7 +38,6 @@ from app.ui.dialogs import show_error, show_warning
 from app.ui.frame_processing import (
     draw_live_annotations,
     encode_frame_for_upload,
-    encode_image_file_for_upload,
     frame_to_pixmap,
 )
 from app.ui.live_geometry import scale_bbox
@@ -70,7 +71,13 @@ class SearchTab(QWidget):
         self._latest_frame: Any | None = None
         self._frame_for_request: Any | None = None
         self._request_bbox_scale: tuple[float, float] = (1.0, 1.0)
+        self._selected_image_paths: list[str] = []
         self._live_annotations: list[dict[str, Any]] = []
+        self._live_result_history: list[tuple[str, float] | None] = []
+        self._live_stable_label: str | None = None
+        self._live_stable_misses = 0
+        self._live_checking_ticks = 0
+        self._live_no_face_misses = 0
         self._camera_timer = QTimer(self)
         self._camera_timer.timeout.connect(self._update_camera_frame)
         self._live_timer = QTimer(self)
@@ -168,10 +175,12 @@ class SearchTab(QWidget):
         self.live_preset.setCurrentIndex(1)
         self.live_preset.currentIndexChanged.connect(self._on_live_preset_changed)
         self.live_interval = QSpinBox()
-        self.live_interval.setRange(500, 5000)
-        self.live_interval.setSingleStep(100)
+        self.live_interval.setRange(150, 5000)
+        self.live_interval.setSingleStep(50)
         self.live_interval.setValue(self.settings.live_scan_interval_ms)
         self.live_interval.setSuffix(" ms")
+        self.multi_face_live = QCheckBox("Multi-face search")
+        self.multi_face_live.setChecked(False)
         self.pause_btn = ActionButton("Pause scan")
         self.pause_btn.setEnabled(False)
         self.pause_btn.clicked.connect(self._toggle_pause)
@@ -179,6 +188,7 @@ class SearchTab(QWidget):
         advanced_row.addWidget(self.camera_combo)
         advanced_row.addWidget(self.live_preset)
         advanced_row.addWidget(self.live_interval)
+        advanced_row.addWidget(self.multi_face_live)
         advanced_row.addWidget(self.pause_btn)
         advanced_row.addStretch()
         advanced.addLayout(advanced_row)
@@ -293,11 +303,15 @@ class SearchTab(QWidget):
             self.pipeline_combo.addItem("Both pipelines", "both")
             self.pipeline_combo.setEnabled(False)
             self.execute_btn.setText("Enroll person")
+            self.browse_btn.setText("Browse images")
         else:
+            if len(self._selected_image_paths) > 1:
+                self._set_image_path(self._selected_image_paths[0])
             self.pipeline_combo.addItem("Pretrained", "pretrained")
             self.pipeline_combo.addItem("Custom", "custom")
             self.pipeline_combo.setEnabled(True)
             self.execute_btn.setText("Run search")
+            self.browse_btn.setText("Browse image")
 
         if self.live_preset.currentData() != "custom":
             self._on_live_preset_changed()
@@ -305,17 +319,48 @@ class SearchTab(QWidget):
         self.info_mode.set_value(mode.title())
 
     def _set_image_path(self, path: str) -> None:
-        self.drop_zone.load(path)
-        self.file_label.setText(shorten_path(path, max_length=74))
-        self.file_label.setToolTip(path)
-        self.file_label.setProperty("selected_path", path)
+        self._set_image_paths([path])
+
+    def _set_image_paths(self, paths: list[str]) -> None:
+        selected_paths = [path for path in paths if path]
+        if not selected_paths:
+            return
+
+        first_path = selected_paths[0]
+        self._selected_image_paths = selected_paths
+        self.drop_zone.load(first_path)
+        if len(selected_paths) == 1:
+            self.file_label.setText(shorten_path(first_path, max_length=74))
+        else:
+            preview = shorten_path(first_path, max_length=52)
+            self.file_label.setText(f"{len(selected_paths)} images selected. Preview: {preview}")
+        self.file_label.setToolTip("\n".join(selected_paths[:20]))
+        self.file_label.setProperty("selected_path", first_path)
+        self.file_label.setProperty("selected_paths", selected_paths)
         if self._live_running:
             self._stop_camera()
 
     def _image_path(self) -> str:
         return str(self.file_label.property("selected_path") or "")
 
+    def _image_paths(self) -> list[str]:
+        if self._selected_image_paths:
+            return list(self._selected_image_paths)
+        path = self._image_path()
+        return [path] if path else []
+
     def _browse(self) -> None:
+        if self._mode == "enroll":
+            paths, _ = QFileDialog.getOpenFileNames(
+                self,
+                "Select images",
+                "",
+                "Images (*.jpg *.jpeg *.png *.bmp *.webp);;All files (*.*)",
+            )
+            if paths:
+                self._set_image_paths(paths)
+            return
+
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Select image",
@@ -328,10 +373,12 @@ class SearchTab(QWidget):
     def _clear_image(self) -> None:
         if self._live_running:
             self._stop_camera()
+        self._selected_image_paths = []
         self.drop_zone.clear_preview()
         self.file_label.setText("No image selected")
         self.file_label.setToolTip("")
         self.file_label.setProperty("selected_path", "")
+        self.file_label.setProperty("selected_paths", [])
         self.console.clear()
         self._clear_results()
         self._clear_frame_faces()
@@ -341,10 +388,9 @@ class SearchTab(QWidget):
         self.info_faces.set_value("-")
         self._set_summary_message("idle", "No search has been run yet.")
 
-
     def _execute(self) -> None:
-        path = self._image_path()
-        if not path:
+        paths = self._image_paths()
+        if not paths:
             show_warning(self, "Missing image", "Select or drop an image first.")
             return
 
@@ -352,23 +398,16 @@ class SearchTab(QWidget):
             show_warning(self, "Missing label", "Enroll mode expects a profile label.")
             return
 
-        image_source: str | bytes = path
-        bbox_scale = (1.0, 1.0)
-        encoded_result = self._encode_image_file(path)
-        if encoded_result is not None:
-            image_source, bbox_scale = encoded_result
-            record_event(
-                "search",
-                "Optimized selected image before upload",
-                severity="INFO",
-                meta={"path": path},
-            )
+        if self._mode == "enroll" and len(paths) > 1:
+            self._dispatch_enroll_batch(paths)
+            return
 
+        path = paths[0]
         self._dispatch_request(
-            image_source,
+            path,
             origin="manual",
             source_label=path,
-            bbox_scale=bbox_scale,
+            bbox_scale=(1.0, 1.0),
         )
 
     def _dispatch_request(
@@ -401,17 +440,86 @@ class SearchTab(QWidget):
                 parent=self,
             )
         else:
+            request_k = 1 if origin == "live" else self.k_input.value()
             self._worker = ApiWorker(
                 self.api.search,
                 image_source,
-                self.k_input.value(),
+                request_k,
                 self.pipeline_combo.currentData(),
+                source="webcam" if origin == "live" else None,
+                multi_face=self.multi_face_live.isChecked() if origin == "live" else True,
                 parent=self,
             )
 
         self._worker.finished.connect(self._on_success)
         self._worker.failed.connect(self._on_error)
         self._worker.start()
+
+    def _dispatch_enroll_batch(self, image_paths: list[str]) -> None:
+        if self._worker is not None and self._worker.isRunning():
+            return
+
+        label = self.label_input.text().strip()
+        pipeline = str(self.pipeline_combo.currentData() or "both")
+        self._request_origin = "manual"
+        self._request_bbox_scale = (1.0, 1.0)
+        self._request_started = time.perf_counter()
+        self.execute_btn.setEnabled(False)
+        record_event(
+            "enroll",
+            f"Started batch enroll for {len(image_paths)} images",
+            severity="INFO",
+            details=f"label={label} pipeline={pipeline}",
+        )
+
+        self._worker = ApiWorker(
+            self._enroll_image_batch,
+            list(image_paths),
+            label,
+            pipeline,
+            parent=self,
+        )
+        self._worker.finished.connect(self._on_success)
+        self._worker.failed.connect(self._on_error)
+        self._worker.start()
+
+    def _enroll_image_batch(self, image_paths: list[str], label: str, pipeline: str) -> dict[str, Any]:
+        started = time.perf_counter()
+        results: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+
+        for position, path in enumerate(image_paths, start=1):
+            try:
+                payload = self.api.enroll(path, label, pipeline)
+            except Exception as exc:  # noqa: BLE001 - keep batch going and report per-file errors
+                errors.append(
+                    {
+                        "position": position,
+                        "file": Path(path).name,
+                        "error": format_api_error(exc),
+                    }
+                )
+                continue
+
+            results.append(
+                {
+                    "position": position,
+                    "file": Path(path).name,
+                    "payload": payload,
+                }
+            )
+
+        return {
+            "operation": "batch_enroll",
+            "label": label,
+            "pipeline": pipeline,
+            "requested": len(image_paths),
+            "succeeded": len(results),
+            "failed": len(errors),
+            "results": results,
+            "errors": errors,
+            "latency_ms": (time.perf_counter() - started) * 1000,
+        }
 
     def _on_success(self, payload: object) -> None:
         origin = self._request_origin
@@ -425,8 +533,11 @@ class SearchTab(QWidget):
             self._render_enroll(payload, latency_ms)
         else:
             self._render_search(payload, latency_ms)
+            if origin != "live":
+                self._update_manual_annotations(payload)
 
         if origin == "live":
+            self._live_no_face_misses = 0
             if self._live_paused:
                 self.live_status.set_state("warn", f"Paused - {latency_ms:.0f} ms")
             else:
@@ -437,6 +548,9 @@ class SearchTab(QWidget):
     def _render_enroll(self, payload: object, latency_ms: float) -> None:
         self._clear_results()
         if not isinstance(payload, dict):
+            return
+        if payload.get("operation") == "batch_enroll":
+            self._render_batch_enroll(payload, latency_ms)
             return
 
         self.matches_pill.set_state("ok", "Profile registered")
@@ -464,6 +578,72 @@ class SearchTab(QWidget):
             details=f"person_id={payload.get('person_id', '-')}",
         )
 
+    def _render_batch_enroll(self, payload: dict[str, Any], latency_ms: float) -> None:
+        requested = int(payload.get("requested", 0) or 0)
+        succeeded = int(payload.get("succeeded", 0) or 0)
+        failed = int(payload.get("failed", 0) or 0)
+        pipeline = str(payload.get("pipeline") or "-")
+        state = "ok" if failed == 0 and succeeded > 0 else "warn" if succeeded > 0 else "error"
+        self.matches_pill.set_state(state, f"{succeeded}/{requested} registered")
+        self.info_mode.set_value(f"Enroll batch - {pipeline.title()}")
+        self.info_latency.set_value(f"{payload.get('latency_ms', latency_ms):.0f} ms")
+        self.info_faces.set_value(f"{succeeded}/{requested}")
+
+        rows: list[dict[str, Any]] = []
+        first_person_id = "-"
+        for row_index, item in enumerate(payload.get("results", [])):
+            if not isinstance(item, dict):
+                continue
+            result_payload = item.get("payload")
+            if not isinstance(result_payload, dict):
+                result_payload = {}
+            person_id = str(result_payload.get("person_id") or "")
+            if first_person_id == "-" and person_id:
+                first_person_id = person_id[:18]
+            indexed_pipelines = result_payload.get("pipelines_indexed")
+            if isinstance(indexed_pipelines, list) and indexed_pipelines:
+                row_pipeline = ", ".join(str(value) for value in indexed_pipelines)
+            else:
+                row_pipeline = str(result_payload.get("pipeline") or pipeline)
+            rows.append(
+                {
+                    "label": self.label_input.text().strip() or "Registered",
+                    "person_id": person_id,
+                    "pipeline": row_pipeline,
+                    "face_index": row_index,
+                    "score": 1.0,
+                    "distance": 0.0,
+                    "source": item.get("file", ""),
+                    "_decision": "Registered",
+                }
+            )
+
+        self.info_best.set_value(first_person_id)
+        if succeeded:
+            self._populate_results(rows, empty_text="No images were registered.")
+        else:
+            self._populate_results([], empty_text="No images were registered.")
+
+        if failed:
+            failed_files = payload.get("errors", [])
+            first_error = ""
+            if failed_files and isinstance(failed_files[0], dict):
+                first_error = str(failed_files[0].get("error") or "")
+            suffix = f" First error: {first_error}" if first_error else ""
+            self._set_summary_message(
+                state,
+                f"Registered {succeeded}/{requested} images for this profile; {failed} failed validation.{suffix}",
+            )
+        else:
+            self._set_summary_message("ok", f"Registered {succeeded} images as samples for the same profile.")
+
+        record_event(
+            "enroll",
+            f"Batch enroll finished: {succeeded}/{requested} images registered",
+            severity="INFO" if failed == 0 else "WARN",
+            details=f"failed={failed} label={self.label_input.text().strip() or '-'}",
+        )
+
     def _render_search(self, payload: object, latency_ms: float) -> None:
         self._clear_results()
         if not isinstance(payload, dict):
@@ -474,9 +654,13 @@ class SearchTab(QWidget):
         matched_faces = payload.get("matched_faces", 0)
         faces_detected = payload.get("faces_detected", 0)
         decision = payload.get("decision", "unknown")
+        display_results = results
+        if self._request_origin == "live" and decision != "match":
+            display_results = []
 
         pill_state = "ok" if decision == "match" else "warn"
-        self.matches_pill.set_state(pill_state, f"{len(results)} matches")
+        result_label = "matches" if decision == "match" else "matches"
+        self.matches_pill.set_state(pill_state, f"{len(display_results)} {result_label}")
         self.info_mode.set_value(str(payload.get("pipeline", "-")).title())
         self.info_best.set_value(f"{best_score:.4f}" if best_score is not None else "-")
         self.info_latency.set_value(f"{payload.get('latency_ms', latency_ms):.0f} ms")
@@ -488,14 +672,14 @@ class SearchTab(QWidget):
         )
 
         self._populate_results(
-            results,
+            display_results,
             empty_text="No matches returned for this query.",
             threshold=payload.get("threshold_used"),
         )
         if self._request_origin != "live":
             record_event(
                 "search",
-                f"Search finished with {len(results)} results",
+                f"Search finished with {len(display_results)} results",
                 severity="INFO",
                 details=f"decision={decision} best_score={best_score}",
             )
@@ -576,6 +760,7 @@ class SearchTab(QWidget):
     def _result_tooltip(self, result: dict[str, Any]) -> str:
         parts = []
         for label, key in [
+            ("File", "source"),
             ("Person ID", "person_id"),
             ("Embedding ID", "embedding_id"),
             ("Distance", "distance"),
@@ -610,15 +795,57 @@ class SearchTab(QWidget):
         origin = self._request_origin
         self._worker = None
         self.execute_btn.setEnabled(True)
+
+        if origin == "live":
+            self._handle_live_error(error)
+            return
+
         self.matches_pill.set_state("error", "Request failed")
         self._set_summary_message("error", error)
         record_event("search", "Request failed", severity="ERROR", details=error)
         if origin != "live" or self.details_section.is_expanded():
             self.console.setPlainText(error)
-        if origin == "live":
-            self.live_status.set_state("error", "Live error")
-            return
         show_error(self, "Operation failed", error)
+
+    def _handle_live_error(self, error: str) -> None:
+        record_event("search", "Live request failed", severity="WARN", details=error)
+        if self.details_section.is_expanded():
+            self.console.setPlainText(error)
+
+        if self._is_no_face_error(error):
+            self._live_result_history.append(None)
+            self._live_result_history = self._live_result_history[-3:]
+            self._live_no_face_misses += 1
+
+            if self._live_no_face_misses < 3 and self._live_annotations:
+                self.live_status.set_state("warn", "Tracking")
+                return
+
+            if self._live_no_face_misses >= 3:
+                self._live_annotations = []
+                self._render_frame_faces([])
+                self.matches_pill.set_state("warn", "No face")
+                self.info_best.set_value("-")
+                self.info_faces.set_value("0/0")
+                self._set_summary_message("warn", "No face detected in the last live frames.")
+                self.live_status.set_state("warn", "No face")
+                return
+
+            self.live_status.set_state("warn", "Looking for face")
+            return
+
+        self.matches_pill.set_state("error", "Request failed")
+        self._set_summary_message("error", error)
+        self.live_status.set_state("error", "Live error")
+
+    def _is_no_face_error(self, error: str) -> bool:
+        normalized = error.lower()
+        return (
+            "no face" in normalized
+            or "face detected" in normalized
+            or "face was detected" in normalized
+            or "no faces" in normalized
+        )
 
     def apply_global_filter(self, text: str) -> None:
         query = text.strip().lower()
@@ -640,9 +867,9 @@ class SearchTab(QWidget):
     def _on_live_preset_changed(self) -> None:
         preset = self.live_preset.currentData()
         values = {
-            "fast": 800,
-            "balanced": 1200,
-            "safe": 2000,
+            "fast": 150,
+            "balanced": 300,
+            "safe": 600,
         }
         if preset in values:
             self.live_interval.blockSignals(True)
@@ -686,11 +913,21 @@ class SearchTab(QWidget):
             show_error(self, "Camera unavailable", "Could not open the selected webcam.")
             return
 
+        if self.settings.camera_frame_width > 0:
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, self.settings.camera_frame_width)
+        if self.settings.camera_frame_height > 0:
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, self.settings.camera_frame_height)
+
         self._camera = camera
         self._latest_frame = None
         self._frame_for_request = None
         self._request_bbox_scale = (1.0, 1.0)
         self._live_annotations = []
+        self._live_result_history = []
+        self._live_stable_label = None
+        self._live_stable_misses = 0
+        self._live_checking_ticks = 0
+        self._live_no_face_misses = 0
         self._live_running = True
         self._live_paused = False
         self.capture_btn.setText("Stop camera")
@@ -716,6 +953,8 @@ class SearchTab(QWidget):
         self._latest_frame = None
         self._frame_for_request = None
         self._live_annotations = []
+        self._live_result_history = []
+        self._live_no_face_misses = 0
         if self._camera is not None:
             self._camera.release()
             self._camera = None
@@ -767,10 +1006,11 @@ class SearchTab(QWidget):
             return
         frame = self._frame_for_request
         self._frame_for_request = None  # mark as consumed
+        max_width, jpeg_quality = self._live_upload_settings()
         encoded_result = encode_frame_for_upload(
             frame,
-            max_width=self.settings.live_max_width,
-            jpeg_quality=self.settings.live_jpeg_quality,
+            max_width=max_width,
+            jpeg_quality=jpeg_quality,
         )
         if encoded_result is None:
             self.live_status.set_state("error", "Encode failed")
@@ -783,28 +1023,117 @@ class SearchTab(QWidget):
             bbox_scale=bbox_scale,
         )
 
-    def _encode_image_file(self, path: str) -> tuple[bytes, tuple[float, float]] | None:
-        return encode_image_file_for_upload(
-            path,
-            max_width=self.settings.live_max_width,
-            jpeg_quality=self.settings.live_jpeg_quality,
-        )
+    def _live_upload_settings(self) -> tuple[int, int]:
+        pipeline = str(self.pipeline_combo.currentData() or "")
+        if pipeline == "custom":
+            return (
+                max(self.settings.live_max_width, self.settings.custom_live_max_width),
+                max(self.settings.live_jpeg_quality, self.settings.custom_live_jpeg_quality),
+            )
+        return min(self.settings.live_max_width, 640), min(self.settings.live_jpeg_quality, 75)
 
     def _show_frame(self, frame: Any) -> None:
         pixmap = frame_to_pixmap(frame)
         if pixmap is not None:
+            self._selected_image_paths = []
             self.drop_zone.set_pixmap(pixmap)
             self.file_label.setText("Live camera")
             self.file_label.setToolTip("Webcam stream")
             self.file_label.setProperty("selected_path", "")
+            self.file_label.setProperty("selected_paths", [])
 
     def _update_live_annotations(self, payload: object) -> None:
         if not isinstance(payload, dict):
             return
-        self._live_annotations = self._extract_annotations(payload, self._request_bbox_scale)
+        self._live_no_face_misses = 0
+        annotations = self._extract_annotations(payload, self._request_bbox_scale)
+        if (
+            not annotations
+            and str(payload.get("decision", "")).lower() != "match"
+        ):
+            annotations = []
+        elif not annotations and self._live_annotations:
+            annotations = self._live_annotations
+
+        for annotation in annotations:
+            if annotation.get("quality") != "match":
+                annotation["label"] = "No match"
+        self._live_annotations = annotations
         self._render_frame_faces(self._live_annotations)
         # No need to force-redraw here; the camera timer will pick up
         # the new annotations on the next frame tick (~33ms away)
+
+    def _update_manual_annotations(self, payload: object) -> None:
+        if cv2 is None or not isinstance(payload, dict):
+            return
+        paths = self._image_paths()
+        if len(paths) != 1:
+            return
+        frame = cv2.imread(paths[0], cv2.IMREAD_COLOR)
+        if frame is None:
+            return
+
+        annotations = self._extract_annotations(payload, self._request_bbox_scale)
+        if annotations:
+            frame = draw_live_annotations(frame, annotations)
+        pixmap = frame_to_pixmap(frame)
+        if pixmap is not None:
+            self.drop_zone.set_pixmap(pixmap)
+        self._render_frame_faces(annotations)
+
+    def _update_live_result_history(self, payload: dict[str, Any]) -> str | None:
+        candidate: tuple[str, float] | None = None
+        pipeline = str(payload.get("pipeline", "")).lower()
+        if str(payload.get("decision", "")).lower() == "match":
+            results = payload.get("results", [])
+            if results and isinstance(results[0], dict):
+                label_value = results[0].get("label")
+                score_value = results[0].get("score")
+                try:
+                    score = float(score_value)
+                    threshold = float(payload.get("threshold_used", 0.0))
+                except (TypeError, ValueError):
+                    score = 0.0
+                    threshold = 0.0
+
+                # Custom live search uses IVF-PQ over a very large synthetic
+                # index, so low-confidence matches are allowed to draw a box
+                # but must not be promoted to a visible identity.
+                required_score = max(threshold, 0.30 if pipeline == "custom" else threshold)
+                if label_value and score >= required_score:
+                    candidate = (str(label_value), score)
+
+        self._live_result_history.append(candidate)
+        self._live_result_history = self._live_result_history[-5:]
+        labels = [item[0] for item in self._live_result_history if item]
+        for label in set(labels):
+            scores = [
+                item[1]
+                for item in self._live_result_history
+                if item and item[0] == label
+            ]
+            if pipeline == "custom":
+                stable = (
+                    (len(scores) >= 2 and max(scores) >= 0.34)
+                    or (len(scores) >= 3 and max(scores) >= 0.26)
+                )
+            else:
+                stable = len(scores) >= 2
+            if stable:
+                self._live_stable_label = label
+                self._live_stable_misses = 0
+                return label
+
+        if self._live_stable_label:
+            if candidate and candidate[0] == self._live_stable_label:
+                self._live_stable_misses = 0
+            else:
+                self._live_stable_misses += 1
+            if self._live_stable_misses < 4:
+                return self._live_stable_label
+            self._live_stable_label = None
+            self._live_stable_misses = 0
+        return None
 
     def _extract_annotations(
         self,

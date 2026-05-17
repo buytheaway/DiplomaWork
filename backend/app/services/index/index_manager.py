@@ -77,6 +77,7 @@ class IndexManager:
                 "nlist": self.settings.ivfpq_nlist,
                 "m": self.settings.ivfpq_m,
                 "nbits": self.settings.ivfpq_nbits,
+                "nprobe": self.settings.ivfpq_nprobe,
             }
         return {}
 
@@ -197,7 +198,15 @@ class IndexManager:
                     snapshot.path,
                 )
                 continue
-            self._index = self._create_index(snapshot.index_type, snapshot.params)
+            params = {
+                **self.default_params_for(snapshot.index_type),
+                **snapshot.params,
+            }
+            if snapshot.index_type == "ivfpq":
+                params["nprobe"] = self.settings.ivfpq_nprobe
+            elif snapshot.index_type == "hnsw":
+                params["ef_search"] = self.settings.hnsw_ef_search
+            self._index = self._create_index(snapshot.index_type, params)
             try:
                 self._load_index_files(snapshot_path)
             except Exception as exc:  # noqa: BLE001
@@ -209,7 +218,7 @@ class IndexManager:
                 )
                 continue
             self._index_type = snapshot.index_type
-            self._params = snapshot.params
+            self._params = params
             self.last_snapshot_id = str(snapshot.id)
             self.current_snapshot_path = snapshot_path
             self._logger.info(
@@ -242,8 +251,13 @@ class IndexManager:
     def add_embedding(self, embedding_id: str, vector: np.ndarray) -> int:
         return self._index.add_embedding(embedding_id, vector)
 
-    def search(self, vector: np.ndarray, k: int) -> list[IndexMatch]:
-        results = self._index.search(vector, k)
+    def search(
+        self,
+        vector: np.ndarray,
+        k: int,
+        search_params: dict[str, Any] | None = None,
+    ) -> list[IndexMatch]:
+        results = self._index.search(vector, k, search_params=search_params)
         return [IndexMatch(r.embedding_id, r.score, r.distance) for r in results]
 
     def rebuild(self, db: Session, index_type: str, params: dict[str, Any]) -> dict[str, Any]:

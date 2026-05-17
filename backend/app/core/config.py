@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     # ── face detection / quality ─────────────────────────────────────────
     strict_single_face: bool = Field(True, alias="STRICT_SINGLE_FACE")
     match_threshold: float = Field(0.4, alias="MATCH_THRESHOLD")
+    pretrained_match_threshold: float | None = Field(None, alias="PRETRAINED_MATCH_THRESHOLD")
+    custom_match_threshold: float | None = Field(None, alias="CUSTOM_MATCH_THRESHOLD")
+    custom_live_match_threshold: float | None = Field(None, alias="CUSTOM_LIVE_MATCH_THRESHOLD")
     detection_backend: Literal["insightface", "opencv", "yolo", "none"] = Field(
         "none", alias="DETECTION_BACKEND"
     )
@@ -78,9 +81,18 @@ class Settings(BaseSettings):
     allow_center_crop: bool = Field(False, alias="ALLOW_CENTER_CROP")
     custom_allow_center_crop: bool = Field(True, alias="CUSTOM_ALLOW_CENTER_CROP")
     min_det_score: float = Field(0.5, alias="MIN_DET_SCORE")
+    custom_min_det_score: float | None = Field(
+        None, ge=0.0, le=1.0, alias="CUSTOM_MIN_DET_SCORE"
+    )
     min_face_size_px: int = Field(0, ge=0, alias="MIN_FACE_SIZE_PX")
     min_face_area_ratio: float = Field(0.0, ge=0.0, le=1.0, alias="MIN_FACE_AREA_RATIO")
     min_face_blur_variance: float = Field(0.0, ge=0.0, alias="MIN_FACE_BLUR_VARIANCE")
+    face_crop_margin: float = Field(0.0, ge=0.0, le=1.0, alias="FACE_CROP_MARGIN")
+    custom_face_crop_margin: float | None = Field(
+        0.20, ge=0.0, le=1.0, alias="CUSTOM_FACE_CROP_MARGIN"
+    )
+    yolo_imgsz: int = Field(640, ge=160, alias="YOLO_IMGSZ")
+    custom_yolo_imgsz: int | None = Field(None, ge=160, alias="CUSTOM_YOLO_IMGSZ")
 
     # ── vector index ─────────────────────────────────────────────────────
     index_type: Literal["flat", "hnsw", "ivfpq"] = Field("hnsw", alias="INDEX_TYPE")
@@ -102,6 +114,14 @@ class Settings(BaseSettings):
     ivfpq_nlist: int = Field(100, alias="IVFPQ_NLIST")
     ivfpq_m: int = Field(16, alias="IVFPQ_M")
     ivfpq_nbits: int = Field(8, alias="IVFPQ_NBITS")
+    ivfpq_nprobe: int = Field(16, alias="IVFPQ_NPROBE")
+    search_candidate_k: int = Field(200, alias="SEARCH_CANDIDATE_K")
+    search_dynamic_enabled: bool = Field(True, alias="SEARCH_DYNAMIC_ENABLED")
+    search_candidate_k_fast: int = Field(100, alias="SEARCH_CANDIDATE_K_FAST")
+    search_candidate_k_safe: int = Field(500, alias="SEARCH_CANDIDATE_K_SAFE")
+    ivfpq_nprobe_fast: int = Field(32, alias="IVFPQ_NPROBE_FAST")
+    ivfpq_nprobe_safe: int = Field(128, alias="IVFPQ_NPROBE_SAFE")
+    search_fallback_margin: float = Field(0.05, alias="SEARCH_FALLBACK_MARGIN")
     index_snapshot_retention: int = Field(3, alias="INDEX_SNAPSHOT_RETENTION")
 
     # ── security / CORS ──────────────────────────────────────────────────

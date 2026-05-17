@@ -48,6 +48,20 @@ class EmbeddingExtractor(ABC):
         """Return embeddings for all valid faces in the image."""
         return [FaceEmbedding(embedding=self.extract_embedding(image_bytes))]
 
+    def extract_largest_embedding(self, image_bytes: bytes) -> FaceEmbedding:
+        """Return one embedding for the largest detected face."""
+        embeddings = self.extract_embeddings(image_bytes)
+        if not embeddings:
+            raise NoFaceDetectedError("No face detected")
+
+        def area(item: FaceEmbedding) -> float:
+            if item.bbox is None:
+                return 0.0
+            x1, y1, x2, y2 = item.bbox
+            return max(0.0, x2 - x1) * max(0.0, y2 - y1)
+
+        return max(embeddings, key=area)
+
 
 class DummyEmbeddingExtractor(EmbeddingExtractor):
     """Deterministic extractor that needs zero ML dependencies."""

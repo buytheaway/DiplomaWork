@@ -24,7 +24,14 @@ logger = logging.getLogger(__name__)
 class YoloFaceDetector:
     """Detect faces using an Ultralytics YOLO model."""
 
-    def __init__(self, model_path: str, conf_threshold: float = 0.5) -> None:
+    def __init__(
+        self,
+        model_path: str,
+        conf_threshold: float = 0.5,
+        *,
+        imgsz: int = 640,
+        device: str | None = None,
+    ) -> None:
         try:
             from ultralytics import YOLO
         except ImportError as exc:
@@ -39,7 +46,15 @@ class YoloFaceDetector:
 
         self._model = YOLO(str(resolved))
         self._conf = conf_threshold
-        logger.info("YOLO face detector loaded: %s (conf=%.2f)", resolved.name, conf_threshold)
+        self._imgsz = imgsz
+        self._device = device
+        logger.info(
+            "YOLO face detector loaded: %s (conf=%.2f imgsz=%s device=%s)",
+            resolved.name,
+            conf_threshold,
+            imgsz,
+            device or "auto",
+        )
 
     def detect(self, image: np.ndarray) -> list[DetectedFace]:
         """Run YOLO inference and return detected faces.
@@ -55,7 +70,14 @@ class YoloFaceDetector:
             One entry per detected face.  Landmarks (``kps``) are always
             ``None`` because YOLO does not produce facial keypoints.
         """
-        results = self._model(image, conf=self._conf, verbose=False)
+        kwargs = {
+            "conf": self._conf,
+            "imgsz": self._imgsz,
+            "verbose": False,
+        }
+        if self._device:
+            kwargs["device"] = self._device
+        results = self._model(image, **kwargs)
 
         faces: list[DetectedFace] = []
         for result in results:
