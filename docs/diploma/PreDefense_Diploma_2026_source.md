@@ -147,7 +147,9 @@ This structure is easy to validate, works well with PyTorch dataset loaders, and
 
 The project is designed to accept external datasets rather than bundle raw training corpora into the repository. This is important for both licensing and practical reasons. Public face datasets may have specific usage restrictions, and large image collections should not be committed directly into the code repository. The codebase instead provides scripts and loaders that transform external inputs into embeddings and index-ready artifacts.
 
-In the research branch, public datasets such as CelebA, LFW, or identity-based face folders can be used to prepare experimental inputs. For the diploma narrative, the important point is not to claim that all datasets are stored in the repository, but to show that the system defines a reproducible protocol: external data enters through a controlled folder structure, is checked, converted into embeddings, and searched through FAISS. This is consistent with the research-ready goals of the project.
+For the final diploma version, the dataset roles are fixed. The main real-face training dataset for the custom IR-50 experiments is CelebA prepared as identity folders under `datasets/celeba_faces/train`, with validation data under `datasets/celeba_faces/val`. LFW is not the training dataset; it is reserved for final labeled-pair verification and threshold analysis through `handoff_lfw_eval/lfw` and `handoff_lfw_eval/lfw/pairs.txt`. Synthetic 512-dimensional vectors are used only for retrieval scalability experiments and do not replace biometric quality evaluation. Optional synthetic or generated sources such as DigiFace1M can be used for warmstart or scale simulation, but they are not presented as the final real-face biometric validation dataset.
+
+The important point is not to claim that all datasets are stored in the repository, but to show that the system defines a reproducible protocol: external data enters through a controlled folder structure, is checked, converted into embeddings, and searched through FAISS. This is consistent with the research-ready goals of the project.
 
 ## 4.3. Enrollment Data Policy
 
@@ -490,6 +492,8 @@ Despite the prototype status, the project already demonstrates relevance to seve
 
 The main result of the work is not a single accuracy number. It is the successful creation of a complete biometric face search prototype that unites model inference, vector search, storage, desktop interaction, and comparative runtime logic in one architecture. This is the central contribution of the project.
 
+The scientific and engineering contribution must be separated from external algorithms. The project does not claim to invent ArcFace, SCRFD, HNSW, IVF-PQ, or a new biometric loss. Those are external methods and libraries used as components. The author's contribution is the integrated system: a modular FastAPI backend, desktop operator client, custom Torch pipeline integration, storage and encryption logic for biometric templates, FAISS index management, real LFW verification reporting, synthetic scalability benchmarking, and clear claim boundaries for biometric quality versus retrieval behavior.
+
 [[PAGE_BREAK]]
 # 10. Security and Privacy Considerations
 
@@ -506,9 +510,9 @@ The security posture should be described as MVP hardening, not as a complete ent
 [[PAGE_BREAK]]
 # 11. Custom Model Status
 
-The custom PyTorch branch is an experimental research extension. It is useful for demonstrating that the architecture can host project-specific embedding extractors, training utilities, and export workflows. However, it should not be presented as a validated biometric model unless training logs, checkpoints, and labeled verification results are available and reproducible.
+The custom PyTorch branch is the proposed custom runtime pipeline of the project. It demonstrates that the architecture can host project-specific embedding extractors, training utilities, candidate checkpoints, and export workflows. The branch is now supported by labeled LFW verification results, so it can be discussed quantitatively rather than only methodologically.
 
-The stable MVP should be described as relying on the pretrained ONNX or InsightFace extractor path. The custom branch may be discussed as future research and comparative infrastructure. Claims that the custom branch outperforms the pretrained path, has completed quality validation, or has confirmed biometric accuracy are not supported by the current tracked evaluation artifacts.
+The final custom runtime uses `torch_insightface_iresnet100` with `runtime_fallback_center_crop` preprocessing, RGB input, `[-1, 1]` normalization, hflip TTA, and selected threshold 0.205047. On LFW, this final custom runtime achieved EER 0.015000 and best accuracy 0.990500 on 6000/6000 valid pairs. The pretrained ONNX/InsightFace baseline achieved EER 0.027852 and best accuracy 0.984556 on its evaluated valid pairs. The correct conclusion is that the custom runtime is implemented, evaluated with real biometric metrics, and compared against an external baseline. This does not imply liveness protection, universal deployment accuracy, or compatibility with old `torch_ir50` embeddings.
 
 [[PAGE_BREAK]]
 # 12. Defense Claim Boundaries
@@ -519,8 +523,8 @@ The following claim boundaries keep the defense narrative aligned with the imple
 - It is correct to say that Flat, HNSW, and IVF-PQ are available as index methods in the research benchmark.
 - It is correct to say that `top_k_overlap@K` measures overlap with exact Flat top-K neighbors in the synthetic benchmark.
 - It is not correct to call `top_k_overlap@K` biometric identification hit@K.
-- It is not correct to report FAR, FRR, EER, or TAR@FAR values for the stable ONNX path until the stable extractor evaluator is run on labeled pairs.
-- It is correct to say that FAR, FRR, EER, TAR@FAR helpers and tests exist.
+- It is correct to report the tracked LFW FAR/FRR/EER/TAR@FAR results for the custom Torch IR-50 pipeline and the pretrained ONNX/InsightFace baseline.
+- It is not correct to claim that the custom pipeline is better than the pretrained baseline.
 - It is correct to say that the stable extractor pair evaluator exists and can evaluate ONNX, InsightFace, Torch, or Dummy backends.
 - It is not correct to treat the Dummy backend as biometric evidence.
 - It is correct to say that raw images are not stored by default and that embeddings and snapshots are encrypted.
@@ -587,21 +591,21 @@ The project includes pure NumPy helpers for biometric verification metrics:
 
 The score convention is explicit: higher score means more similar, and `score >= threshold` means match. Raising the threshold lowers FAR and increases FRR. Lowering the threshold increases FAR and lowers FRR. This threshold behavior must be calibrated on labeled positive and negative pairs.
 
-No numerical FAR, FRR, EER, TAR@FAR, or threshold results are reported here because real LFW or stable extractor pair evaluation was not run for the tracked documentation artifacts.
+The final LFW labeled-pair evaluation was run for the final custom Torch runtime model and for the pretrained ONNX/InsightFace baseline. The final custom `torch_insightface_iresnet100` pipeline achieved EER 0.015000, best accuracy 0.990500, and TAR@FAR=0.01 equal to 0.984667 on 6000/6000 valid pairs with zero skipped pairs. The selected runtime threshold is 0.205047, with FAR 0.001667 and FRR 0.017333 at that threshold. The pretrained baseline achieved EER 0.027852, best accuracy 0.984556, and TAR@FAR=0.01 equal to 0.971141 on 5957 valid pairs. These values are real biometric verification metrics and must be interpreted separately from synthetic FAISS retrieval metrics.
 
 ## 13.6. Stable Extractor Evaluator
 
-The standalone evaluator `scripts/evaluate_verification_pairs.py` supports `onnx`, `insightface`, `torch`, and `dummy` backends. It reads LFW-style `pairs.txt`, loads images from an aligned image directory, extracts embeddings through the selected backend, L2-normalizes embeddings if needed, computes dot-product similarity, and reports FAR, FRR, EER, TAR@FAR, selected thresholds, and curve points.
+The standalone evaluator `scripts/evaluate_lfw_verification.py` reads LFW-style `pairs.txt`, loads image pairs, extracts embeddings through either the custom Torch pipeline or the pretrained ONNX/InsightFace baseline, L2-normalizes embeddings, computes dot-product similarity, and reports FAR, FRR, EER, TAR@FAR, selected thresholds, and curve points.
 
-This evaluator can evaluate the stable MVP extractor path when run with `--backend onnx` or `--backend insightface`. Real results require `data/lfw_aligned` and `data/lfw/pairs.txt`, or another labeled pair dataset in the same structure. The Dummy backend is for plumbing tests only and has no biometric meaning.
+The final evaluation uses `handoff_lfw_eval/lfw` and `handoff_lfw_eval/lfw/pairs.txt`. LFW is reserved for evaluation and threshold analysis, not for final training. The main real-face fine-tuning dataset is defined as `datasets/celeba_faces/train` with validation data in `datasets/celeba_faces/val`.
 
 ## 13.7. Limitations of Evaluation
 
 The current evaluation state has clear limitations:
 
-- there are no real stable ONNX FAR, FRR, or EER results yet;
+- LFW metrics are now reported for the final custom runtime model, but they remain an evaluation result rather than a guarantee for every operating condition;
 - the synthetic retrieval benchmark is not biometric accuracy;
-- the custom PyTorch training branch is experimental;
+- historical `torch_ir50` embeddings remain incompatible with the final `torch_insightface_iresnet100` embedding space and must be re-enrolled or re-imported from source images;
 - a 100,000-vector benchmark is not reported because it was not run for the tracked PR 2 artifacts;
 - liveness, spoofing resistance, and operational abuse testing remain future work.
 

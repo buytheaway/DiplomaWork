@@ -282,9 +282,21 @@ The `training/` directory contains research utilities for the custom branch:
 - ONNX export helpers
 - dataset preparation scripts
 
-The custom PyTorch branch is an experimental research extension. The stable MVP
-runtime relies on the pretrained ONNX/InsightFace extractor path. Custom model
-quality claims require valid training logs and labeled verification results.
+The custom Torch IR-50 branch is the proposed project pipeline for the defense
+runtime. The pretrained ONNX/InsightFace path is kept as a comparison baseline
+and operational reference. Custom model quality claims require valid training
+logs and labeled verification results.
+
+Use prepared CelebA identity folders for custom IR-50 fine-tuning:
+
+```text
+datasets/celeba_faces/train/<identity>/*.jpg
+datasets/celeba_faces/val/<identity>/*.jpg
+```
+
+Do not use LFW for training. LFW is reserved for final FAR/FRR/EER verification
+evaluation. DigiFace1M may be used for synthetic warmstart or scale data, but it
+does not replace real-face fine-tuning on CelebA.
 
 ## Evaluation and benchmarks
 
@@ -309,21 +321,33 @@ The tracked PR 2 benchmark artifacts are stored in `docs/benchmarks/`. The
 synthetic retrieval metric is `top_k_overlap@K`, not biometric identification
 hit@K and not biometric accuracy.
 
-Stable extractor verification evaluator:
+LFW biometric verification evaluator:
 
 ```powershell
-python scripts\evaluate_verification_pairs.py `
-  --backend onnx `
-  --images-dir data\lfw_aligned `
-  --pairs data\lfw\pairs.txt `
-  --output training\outputs\stable_onnx_lfw_results.json `
-  --target-far 0.001,0.01,0.1 `
-  --fail-on-missing
+python scripts\evaluate_lfw_verification.py `
+  --lfw-root handoff_lfw_eval\lfw `
+  --pairs-file handoff_lfw_eval\lfw\pairs.txt `
+  --pipeline custom `
+  --output-dir reports\biometric_eval\lfw_custom
 ```
 
-Do not report FAR, FRR, EER, TAR@FAR, or threshold values until this evaluator
-or another labeled verification evaluation has actually been run on the target
-dataset.
+Tracked summary results are documented in
+`docs/benchmarks/lfw_biometric_verification_results.md`. The custom Torch IR-50
+pipeline is the proposed project pipeline; the pretrained ONNX/InsightFace
+pipeline is the external comparison baseline. Do not claim the custom model is
+state-of-the-art or better than the pretrained baseline unless the reported
+metrics prove it.
+
+Keep the two evaluation tracks separate:
+
+- biometric quality: LFW labeled-pair metrics such as FAR, FRR, EER, and
+  TAR@FAR;
+- retrieval scalability: FAISS behavior on 1M/2M embeddings, reported with
+  retrieval latency, build time, index size, and `top_k_overlap@K`.
+
+If the custom checkpoint, preprocessing, or embedding model changes, rebuild all
+custom stored embeddings and custom FAISS indexes. Old vectors live in the old
+embedding space and are not compatible with the new checkpoint.
 
 ## Tests
 

@@ -1,0 +1,66 @@
+{
+  "pipeline": "custom",
+  "pipeline_display_name": "Proposed custom Torch IR-50 pipeline",
+  "extractor_model": "torch_ir50",
+  "embedding_dim": 512,
+  "settings_summary": {
+    "embedding_backend": "torch",
+    "detection_backend": "opencv",
+    "embedding_dim": 512,
+    "strict_single_face": true,
+    "min_det_score": 0.5,
+    "torch_model_arch": "ir50",
+    "torch_input_size": 112,
+    "torch_device": "cuda",
+    "torch_norm_embeddings": true,
+    "onnx_detector_configured": false,
+    "onnx_embedder_configured": false,
+    "torch_model_configured": true
+  },
+  "valid_pairs": 5904,
+  "positive_pairs": 2957,
+  "negative_pairs": 2947,
+  "skipped_pairs": 96,
+  "mean_positive_score": 0.47401,
+  "mean_negative_score": 0.182734,
+  "eer": 0.166949,
+  "eer_threshold": 0.307675,
+  "eer_far": 0.166949,
+  "eer_frr": 0.166949,
+  "best_accuracy": 0.83435,
+  "best_accuracy_threshold": 0.322468,
+  "far_at_best_threshold": 0.142518,
+  "frr_at_best_threshold": 0.188705,
+  "tar_at_far": {
+    "0.1": {
+      "tar": 0.764288,
+      "threshold": 0.350755,
+      "far": 0.099762,
+      "frr": 0.235712
+    },
+    "0.01": {
+      "tar": 0.496449,
+      "threshold": 0.484983,
+      "far": 0.009841,
+      "frr": 0.503551
+    },
+    "0.001": {
+      "tar": 0.21373,
+      "threshold": 0.613053,
+      "far": 0.000679,
+      "frr": 0.78627
+    }
+  },
+  "definitions": {
+    "positive": "same person pair",
+    "negative": "different person pair",
+    "decision_rule": "score >= threshold means match",
+    "far": "false accepts / total negative pairs",
+    "frr": "false rejects / total positive pairs",
+    "eer": "threshold where FAR and FRR are closest"
+  },
+  "lfw_root": "handoff_lfw_eval\\lfw",
+  "pairs_file": "handoff_lfw_eval\\lfw\\pairs.txt",
+  "pairs_loaded": 6000,
+  "cache_dir": "reports\\biometric_eval\\cache\\custom"
+}

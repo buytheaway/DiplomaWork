@@ -1,0 +1,149 @@
+{
+  "model_name": "torch_insightface_iresnet100",
+  "sources": [
+    "datasets\\celeba_faces",
+    "handoff_lfw_eval\\lfw",
+    "data\\new_custom_enroll"
+  ],
+  "total_real_images_scanned": 206802,
+  "max_images": 10000,
+  "embedding_dim": 512,
+  "embedding_memmap_path": "reports\\real_image_embedding_benchmark\\real_image_embeddings.float32.memmap",
+  "mapping_path": "reports\\real_image_embedding_benchmark\\real_image_mapping.csv",
+  "index_path": "reports\\real_image_embedding_benchmark\\real_image_hnsw.faiss",
+  "images_attempted": 10000,
+  "embeddings_created": 9802,
+  "skipped_no_face": 0,
+  "skipped_invalid": 0,
+  "skipped_multiple_faces": 198,
+  "errors": 0,
+  "extract_time_s": 364.928,
+  "index_type": "hnsw",
+  "index_params": {
+    "m": 32,
+    "ef_construction": 100,
+    "ef_search": 64
+  },
+  "build_time_s": 0.523,
+  "train_time_s": 0.0,
+  "add_time_s": 0.507,
+  "index_size_bytes": 22816727,
+  "index_size_mb": 21.76,
+  "search_latency": {
+    "n_queries": 100,
+    "top_k": 10,
+    "p50_ms": 0.14115,
+    "p95_ms": 0.194645,
+    "p99_ms": 0.338031,
+    "mean_ms": 0.158261,
+    "sample_query_result": {
+      "query_row_id": 0,
+      "query_identity": "10001",
+      "query_image_path": "datasets\\celeba_faces\\test\\10001\\182659.jpg",
+      "top_ids": [
+        0,
+        22,
+        19,
+        12,
+        4,
+        7,
+        1,
+        8,
+        17,
+        18
+      ],
+      "top_scores": [
+        1.0,
+        0.6717286109924316,
+        0.6535125970840454,
+        0.6369744539260864,
+        0.6300750374794006,
+        0.6100558042526245,
+        0.6015669107437134,
+        0.6002235412597656,
+        0.5924512147903442,
+        0.5881415605545044
+      ],
+      "top_results": [
+        {
+          "row_id": 0,
+          "identity": "10001",
+          "image_path": "datasets\\celeba_faces\\test\\10001\\182659.jpg",
+          "score": 1.0
+        },
+        {
+          "row_id": 22,
+          "identity": "10001",
+          "image_path": "datasets\\celeba_faces\\test\\10001\\200004.jpg",
+          "score": 0.6717286109924316
+        },
+        {
+          "row_id": 19,
+          "identity": "10001",
+          "image_path": "datasets\\celeba_faces\\test\\10001\\198498.jpg",
+          "score": 0.6535125970840454
+        },
+        {
+          "row_id": 12,
+          "identity": "10001",
+          "image_path": "datasets\\celeba_faces\\test\\10001\\194420.jpg",
+          "score": 0.6369744539260864
+        },
+        {
+          "row_id": 4,
+          "identity": "10001",
+          "image_path": "datasets\\celeba_faces\\test\\10001\\187108.jpg",
+          "score": 0.6300750374794006
+        },
+        {
+          "row_id": 7,
+          "identity": "10001",
+          "image_path": "datasets\\celeba_faces\\test\\10001\\190979.jpg",
+          "score": 0.6100558042526245
+        },
+        {
+          "row_id": 1,
+          "identity": "10001",
+          "image_path": "datasets\\celeba_faces\\test\\10001\\183505.jpg",
+          "score": 0.6015669107437134
+        },
+        {
+          "row_id": 8,
+          "identity": "10001",
+          "image_path": "datasets\\celeba_faces\\test\\10001\\191146.jpg",
+          "score": 0.6002235412597656
+        },
+        {
+          "row_id": 17,
+          "identity": "10001",
+          "image_path": "datasets\\celeba_faces\\test\\10001\\197107.jpg",
+          "score": 0.5924512147903442
+        },
+        {
+          "row_id": 18,
+          "identity": "10001",
+          "image_path": "datasets\\celeba_faces\\test\\10001\\198339.jpg",
+          "score": 0.5881415605545044
+        }
+      ]
+    }
+  },
+  "lfw_metrics": {
+    "available": true,
+    "path": "reports\\biometric_eval\\candidate_runtime_fallback_center_crop_hflip\\metrics.json",
+    "valid_pairs": 6000,
+    "skipped_pairs": 0,
+    "accuracy": 0.9905,
+    "eer": 0.015,
+    "eer_threshold": 0.154398,
+    "far_at_best_threshold": 0.001667,
+    "frr_at_best_threshold": 0.017333,
+    "selected_threshold": 0.205047,
+    "far_at_selected_threshold": 0.001667,
+    "frr_at_selected_threshold": 0.017333,
+    "tar_at_far_0_1": 0.988333,
+    "tar_at_far_0_01": 0.984667,
+    "tar_at_far_0_001": 0.981
+  },
+  "total_runtime_s": 376.55
+}

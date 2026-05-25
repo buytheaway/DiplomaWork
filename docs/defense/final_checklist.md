@@ -2,7 +2,7 @@
 
 ## Before The Demo
 
-- Use demo or synthetic data only.
+- Use consented demo identities and sanitized reports; do not expose private raw images or secrets.
 - Confirm `.env` values are local and not example placeholders.
 - Start backend and check `GET /v1/health`.
 - Start desktop client from `desktop/.venv`.
@@ -12,7 +12,8 @@
 
 ## Numbers To Show
 
-Use only the tracked PR2 synthetic retrieval benchmark values:
+Use the tracked PR2 synthetic retrieval benchmark values for vector retrieval
+behavior:
 
 | Size | Method | p50 ms | p95 ms | p99 ms | Build s | Memory MB | top_k_overlap@1 | top_k_overlap@5 | top_k_overlap@10 |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -26,12 +27,26 @@ Use only the tracked PR2 synthetic retrieval benchmark values:
 | 10000 | hnsw_ef64 | 0.333450 | 0.460055 | 0.472427 | 1.786023 | 22.123201 | 1.000000 | 0.994000 | 0.987000 |
 | 10000 | ivfpq_nprobe8 | 0.131150 | 0.148080 | 0.167981 | 0.174341 | 0.215382 | 0.030000 | 0.012000 | 0.009000 |
 
+Use the tracked LFW labeled-pair results for biometric verification quality:
+
+| Pipeline | Valid pairs | EER | Best accuracy | TAR@FAR=0.01 |
+|---|---:|---:|---:|---:|
+| Final custom `torch_insightface_iresnet100` | 6000 | 0.015000 | 0.990500 | 0.984667 |
+| Pretrained ONNX/InsightFace baseline | 5957 | 0.027852 | 0.984556 | 0.971141 |
+
+Use the real-image embedding benchmark to show that retrieval measurements were
+also run on embeddings extracted from real face image files:
+
+| Real images scanned | Attempted | Embeddings created | Index type | Index size MB | p95 ms | p99 ms |
+|---:|---:|---:|---|---:|---:|---:|
+| 206802 | 10000 | 9802 | HNSW | 21.76 | 0.194645 | 0.338031 |
+
 ## Do Not Claim
 
-- Real stable ONNX FAR, FRR, or EER values.
-- Confirmed biometric accuracy for the stable MVP.
-- A calibrated deployment threshold already exists.
-- Validated custom PyTorch model quality.
+- The final custom model is guaranteed to outperform every external model in every operating condition.
+- Synthetic top_k_overlap is biometric accuracy.
+- The 1M/2M synthetic benchmark proves biometric accuracy.
+- 1M real biometric images were evaluated unless a real-image benchmark at that scale is actually run.
 - Full DDoS protection.
 - Full RBAC.
 - Hard purge implementation.

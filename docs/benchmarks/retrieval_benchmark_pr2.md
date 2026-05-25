@@ -27,7 +27,8 @@ Generated at: `2026-05-03T13:33:46.885127+00:00`
 - Flat is the exact baseline used to compute the reference nearest-neighbor lists.
 - On the 10,000-vector run, HNSW keeps high top-K overlap while reducing p50/p95/p99 search latency compared with Flat.
 - On very small datasets, Flat is faster because approximate-index overhead is not justified by the database size.
-- IVF-PQ uses less serialized index memory in this configuration, but the current parameters produce low top-K overlap on the synthetic vectors.
+- IVF-PQ uses less serialized index memory in this configuration, but the current small-scale parameters produce very poor top-K overlap on the synthetic vectors. In particular, `top_k_overlap@1` is only `0.130000` at 1,000 vectors and `0.030000` at 10,000 vectors, so this IVF-PQ setting must not be presented as a working quality-preserving index.
+- For the current PR2 small-scale results, HNSW is the appropriate approximate index to discuss as quality-preserving. IVF-PQ should be framed as a compressed-index experiment that requires tuning and/or reranking before use in a recognition-critical path.
 - This synthetic benchmark evaluates vector retrieval behavior, not biometric recognition accuracy.
 
 ## Limitations

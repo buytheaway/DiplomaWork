@@ -82,6 +82,7 @@ handoff_lfw_eval/
 Datasets.txt
 Obsidian_Diploma_Vault/
 reports/biometric_eval/cache/
+reports/biometric_eval/cache_candidates/
 reports/biometric_eval/*/pairs_scores.csv
 reports/biometric_eval/*/threshold_curve.csv
 reports/**/cache/

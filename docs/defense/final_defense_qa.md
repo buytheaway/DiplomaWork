@@ -36,21 +36,24 @@ the correct person was identified.
 ## Where Are FAR, FRR, And EER?
 
 The formulas and unit-tested helpers are implemented in
-`training/verification_metrics.py`. The stable extractor pair evaluator is
-`scripts/evaluate_verification_pairs.py`.
+`training/verification_metrics.py`. The final LFW evaluator is
+`scripts/evaluate_lfw_verification.py`, and the tracked result summary is
+`docs/benchmarks/lfw_biometric_verification_results.md`.
 
-## Why Are There No Real FAR/FRR/EER Numbers Yet?
+## What Do The LFW Results Show?
 
-Real FAR, FRR, EER, TAR@FAR, and threshold values require labeled positive and
-negative biometric pairs. The tracked documentation states that LFW-style
-stable extractor evaluation has not been run yet.
+The final custom `torch_insightface_iresnet100` pipeline has real LFW
+verification metrics: EER `0.015000`, best accuracy `0.990500`, and
+TAR@FAR=0.01 `0.984667` on 6000/6000 valid pairs. The pretrained
+ONNX/InsightFace baseline is the external reference: EER `0.027852`, best
+accuracy `0.984556`, and TAR@FAR=0.01 `0.971141`.
 
 ## Why Is The Custom Model Experimental?
 
-The custom PyTorch branch contains training and evaluation infrastructure, but
-the tracked artifacts do not include final training evidence and labeled
-verification results. The stable MVP should be presented through the pretrained
-ONNX or InsightFace extractor path.
+The custom PyTorch branch is implemented and measured with real LFW biometric
+metrics. It should still be presented with boundaries: the result does not prove
+liveness resistance, universal deployment accuracy, or compatibility with old
+`torch_ir50` embeddings.
 
 ## How Are Embeddings Protected?
 

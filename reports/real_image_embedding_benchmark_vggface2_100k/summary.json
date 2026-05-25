@@ -1,0 +1,147 @@
+{
+  "model_name": "torch_insightface_iresnet100",
+  "sources": [
+    "D:\\datasets\\vggface2_hf\\extracted\\train"
+  ],
+  "total_real_images_scanned": 3141890,
+  "max_images": 100000,
+  "embedding_dim": 512,
+  "embedding_memmap_path": "C:\\Users\\mukha\\OneDrive\\Documents\\GitHub\\DiplomaWork\\reports\\real_image_embedding_benchmark_vggface2_100k\\real_image_embeddings.float32.memmap",
+  "mapping_path": "C:\\Users\\mukha\\OneDrive\\Documents\\GitHub\\DiplomaWork\\reports\\real_image_embedding_benchmark_vggface2_100k\\real_image_mapping.csv",
+  "index_path": "C:\\Users\\mukha\\OneDrive\\Documents\\GitHub\\DiplomaWork\\reports\\real_image_embedding_benchmark_vggface2_100k\\real_image_hnsw.faiss",
+  "images_attempted": 100000,
+  "embeddings_created": 96070,
+  "skipped_no_face": 0,
+  "skipped_invalid": 0,
+  "skipped_multiple_faces": 3930,
+  "errors": 0,
+  "extract_time_s": 4250.146,
+  "index_type": "hnsw",
+  "index_params": {
+    "m": 32,
+    "ef_construction": 100,
+    "ef_search": 64
+  },
+  "build_time_s": 4.369,
+  "train_time_s": 0.0,
+  "add_time_s": 4.134,
+  "index_size_bytes": 223669127,
+  "index_size_mb": 213.308,
+  "search_latency": {
+    "n_queries": 100,
+    "top_k": 10,
+    "p50_ms": 0.1224,
+    "p95_ms": 0.338335,
+    "p99_ms": 0.380692,
+    "mean_ms": 0.156754,
+    "sample_query_result": {
+      "query_row_id": 0,
+      "query_identity": "n000002",
+      "query_image_path": "D:\\datasets\\vggface2_hf\\extracted\\train\\n000002\\0001_01.jpg",
+      "top_ids": [
+        0,
+        48,
+        5,
+        2,
+        1,
+        90,
+        10,
+        143,
+        42,
+        58
+      ],
+      "top_scores": [
+        1.0,
+        0.7554681301116943,
+        0.7529345750808716,
+        0.7337208986282349,
+        0.7299247980117798,
+        0.7235591411590576,
+        0.7178374528884888,
+        0.6828323602676392,
+        0.6800453662872314,
+        0.6799793243408203
+      ],
+      "top_results": [
+        {
+          "row_id": 0,
+          "identity": "n000002",
+          "image_path": "D:\\datasets\\vggface2_hf\\extracted\\train\\n000002\\0001_01.jpg",
+          "score": 1.0
+        },
+        {
+          "row_id": 48,
+          "identity": "n000002",
+          "image_path": "D:\\datasets\\vggface2_hf\\extracted\\train\\n000002\\0042_01.jpg",
+          "score": 0.7554681301116943
+        },
+        {
+          "row_id": 5,
+          "identity": "n000002",
+          "image_path": "D:\\datasets\\vggface2_hf\\extracted\\train\\n000002\\0006_01.jpg",
+          "score": 0.7529345750808716
+        },
+        {
+          "row_id": 2,
+          "identity": "n000002",
+          "image_path": "D:\\datasets\\vggface2_hf\\extracted\\train\\n000002\\0003_01.jpg",
+          "score": 0.7337208986282349
+        },
+        {
+          "row_id": 1,
+          "identity": "n000002",
+          "image_path": "D:\\datasets\\vggface2_hf\\extracted\\train\\n000002\\0002_01.jpg",
+          "score": 0.7299247980117798
+        },
+        {
+          "row_id": 90,
+          "identity": "n000002",
+          "image_path": "D:\\datasets\\vggface2_hf\\extracted\\train\\n000002\\0085_01.jpg",
+          "score": 0.7235591411590576
+        },
+        {
+          "row_id": 10,
+          "identity": "n000002",
+          "image_path": "D:\\datasets\\vggface2_hf\\extracted\\train\\n000002\\0011_01.jpg",
+          "score": 0.7178374528884888
+        },
+        {
+          "row_id": 143,
+          "identity": "n000002",
+          "image_path": "D:\\datasets\\vggface2_hf\\extracted\\train\\n000002\\0142_01.jpg",
+          "score": 0.6828323602676392
+        },
+        {
+          "row_id": 42,
+          "identity": "n000002",
+          "image_path": "D:\\datasets\\vggface2_hf\\extracted\\train\\n000002\\0035_01.jpg",
+          "score": 0.6800453662872314
+        },
+        {
+          "row_id": 58,
+          "identity": "n000002",
+          "image_path": "D:\\datasets\\vggface2_hf\\extracted\\train\\n000002\\0054_01.jpg",
+          "score": 0.6799793243408203
+        }
+      ]
+    }
+  },
+  "lfw_metrics": {
+    "available": true,
+    "path": "C:\\Users\\mukha\\OneDrive\\Documents\\GitHub\\DiplomaWork\\reports\\biometric_eval\\candidate_runtime_fallback_center_crop_hflip\\metrics.json",
+    "valid_pairs": 6000,
+    "skipped_pairs": 0,
+    "accuracy": 0.9905,
+    "eer": 0.015,
+    "eer_threshold": 0.154398,
+    "far_at_best_threshold": 0.001667,
+    "frr_at_best_threshold": 0.017333,
+    "selected_threshold": 0.205047,
+    "far_at_selected_threshold": 0.001667,
+    "frr_at_selected_threshold": 0.017333,
+    "tar_at_far_0_1": 0.988333,
+    "tar_at_far_0_01": 0.984667,
+    "tar_at_far_0_001": 0.981
+  },
+  "total_runtime_s": 4261.576
+}

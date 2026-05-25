@@ -137,8 +137,8 @@ The system can be used as a prototype for:
 Limitations:
 - direct full integration of the legacy deploy/model_bundle artifact into the active runtime still requires additional technical alignment
 - webcam mode is near real-time, not full continuous high-FPS recognition
-- the pretrained branch is currently the most stable runtime baseline
-- final stable-extractor FAR/FRR/EER values require running labeled pair evaluation
+- real LFW FAR/FRR/EER/TAR@FAR metrics are available for the final custom `torch_insightface_iresnet100` runtime and pretrained ONNX/InsightFace baseline
+- the final custom runtime achieved 6000/6000 valid LFW pairs, accuracy 0.990500, EER 0.015000, and TAR@FAR=0.01 0.984667
 
 Expected diploma chapters:
 1. Problem statement and relevance
@@ -156,4 +156,4 @@ OPTIONAL EXTRA PROMPT
 
 You can send the block above together with this additional instruction:
 
-"Using the project context above, write a structured diploma project text in academic Russian. Keep the tone formal. Include introduction, system architecture, implementation details, model comparison infrastructure, practical value, limitations, and conclusion. Emphasize that the project combines a stable pretrained baseline with an experimental custom PyTorch branch whose final quality claims require labeled evaluation."
+"Using the project context above, write a structured diploma project text in academic Russian. Keep the tone formal. Include introduction, system architecture, implementation details, model comparison infrastructure, practical value, limitations, and conclusion. Emphasize that the project combines a proposed custom Torch IR-50 pipeline with a stronger pretrained ONNX/InsightFace baseline, and that LFW FAR/FRR/EER results must be reported honestly."
