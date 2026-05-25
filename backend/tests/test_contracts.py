@@ -24,7 +24,7 @@ from app.services.embeddings.interface import (
     create_extractor,
 )
 from app.services.index.faiss_index import FaissIndex
-from app.services.index.index_manager import IndexManager
+from app.services.index.index_manager import IndexManager, IndexRebuildTooLargeError
 from app.services.storage.repositories import EmbeddingRepo, PersonRepo
 
 # ── schema validation ────────────────────────────────────────────────────────
@@ -191,6 +191,34 @@ def test_index_manager_rebuild_skips_unreadable_embeddings(db_session):
 
     assert stats["embeddings_count"] == 1
     assert manager.search(vector, k=2)[0].embedding_id == str(valid_embedding.id)
+
+
+def test_index_manager_rebuild_rejects_large_in_process_rebuild(db_session):
+    base_settings = get_settings()
+    settings = base_settings.model_copy(update={"index_rebuild_max_embeddings": 1})
+    person = PersonRepo(db_session).create(label="large-rebuild-test")
+    db_session.flush()
+
+    vector = np.zeros(settings.embedding_dim, dtype=np.float32)
+    vector[0] = 1.0
+    repo = EmbeddingRepo(db_session)
+    for _ in range(2):
+        repo.create(
+            person_id=person.id,
+            pipeline="custom",
+            model="dummy",
+            dim=settings.embedding_dim,
+            vector=vector.tobytes(),
+        )
+    db_session.flush()
+
+    manager = IndexManager(settings, model_name="dummy", pipeline="custom")
+    try:
+        manager.rebuild(db_session, "flat", {})
+        raise AssertionError("Expected large API rebuild to be rejected")
+    except IndexRebuildTooLargeError as exc:
+        assert exc.count == 2
+        assert exc.limit == 1
 
 
 # ── dummy extractor ──────────────────────────────────────────────────────────

@@ -35,6 +35,8 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         self.input_size = settings.torch_input_size
         self.use_fp16 = settings.torch_use_fp16
         self.norm_embeddings = settings.torch_norm_embeddings
+        self.preprocess = settings.torch_preprocess
+        self.tta = settings.torch_tta
         self.device = torch.device(settings.torch_device)
 
         model_config = ModelConfig(
@@ -54,7 +56,7 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
             raise FileNotFoundError(f"Torch model not found: {weights_path}")
 
         state = torch.load(str(weights_path), map_location=self.device, weights_only=False)
-        state_dict = state.get("state_dict", state)
+        state_dict = self._normalize_state_dict(state.get("state_dict", state))
         self.model.load_state_dict(state_dict, strict=False)
 
         if settings.detection_backend == "yolo":
@@ -75,9 +77,97 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
             self.detector = InsightFaceDetector(model_name=settings.model_name)
         logging.getLogger(__name__).info("Torch embedding model loaded: %s", weights_path)
 
-    def _extract_face_embedding(self, image: np.ndarray, face) -> FaceEmbedding:
+    def _normalize_state_dict(self, state_dict: object) -> dict:
+        if not isinstance(state_dict, dict):
+            raise ValueError("Torch checkpoint does not contain a state_dict")
+        prefixes = ("module.", "model.", "backbone.", "net.", "encoder.", "_model.")
+        normalized = {}
+        for key, value in state_dict.items():
+            if not hasattr(value, "shape"):
+                continue
+            clean_key = str(key)
+            changed = True
+            while changed:
+                changed = False
+                for prefix in prefixes:
+                    if clean_key.startswith(prefix):
+                        clean_key = clean_key[len(prefix) :]
+                        changed = True
+            if clean_key.startswith("output_layer."):
+                clean_key = clean_key.replace("output_layer.0.", "bn2.")
+                clean_key = clean_key.replace("output_layer.3.", "fc.")
+                clean_key = clean_key.replace("output_layer.4.", "features.")
+            normalized[clean_key] = value
+        return normalized
+
+    def _embed_aligned_face(self, aligned: np.ndarray) -> np.ndarray:
+        import cv2
         import torch
 
+        if aligned.shape[0] != self.input_size or aligned.shape[1] != self.input_size:
+            aligned = cv2.resize(aligned, (self.input_size, self.input_size))
+
+        aligned_faces = [aligned]
+        if self.tta == "hflip":
+            aligned_faces.append(cv2.flip(aligned, 1))
+        elif self.tta != "none":
+            raise ValueError(f"Unsupported TORCH_TTA: {self.tta}")
+
+        tensors = []
+        for face_image in aligned_faces:
+            rgb = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
+            tensor = torch.from_numpy(rgb).float() / 255.0
+            tensor = (tensor - 0.5) / 0.5
+            tensors.append(tensor.permute(2, 0, 1))
+        batch = torch.stack(tensors, dim=0).to(self.device)
+
+        with torch.inference_mode():
+            if self.use_fp16:
+                with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
+                    embeddings = forward_with_normalization(
+                        self.model, batch, normalize=self.norm_embeddings
+                    )
+            else:
+                embeddings = forward_with_normalization(
+                    self.model, batch, normalize=self.norm_embeddings
+                )
+        if len(aligned_faces) > 1:
+            embeddings = torch.nn.functional.normalize(
+                embeddings.float().mean(dim=0, keepdim=True),
+                p=2,
+                dim=1,
+            )
+
+        vector = embeddings.squeeze(0).float().cpu().numpy().astype(np.float32)
+        if vector.shape[0] != self.dim:
+            raise NoFaceDetectedError("Unexpected embedding dimension")
+        return vector
+
+    def _center_crop_aligned(self, image: np.ndarray) -> np.ndarray:
+        import cv2
+
+        height, width = image.shape[:2]
+        side = min(height, width)
+        x1 = max((width - side) // 2, 0)
+        y1 = max((height - side) // 2, 0)
+        crop = image[y1 : y1 + side, x1 : x1 + side]
+        if crop.size == 0:
+            raise NoFaceDetectedError("Invalid center crop")
+        return cv2.resize(crop, (self.input_size, self.input_size))
+
+    def _extract_center_crop_embedding(self, image: np.ndarray) -> FaceEmbedding:
+        vector = self._embed_aligned_face(self._center_crop_aligned(image))
+        height, width = image.shape[:2]
+        side = min(height, width)
+        x1 = float(max((width - side) // 2, 0))
+        y1 = float(max((height - side) // 2, 0))
+        return FaceEmbedding(
+            embedding=vector,
+            detection_score=None,
+            bbox=(x1, y1, x1 + float(side), y1 + float(side)),
+        )
+
+    def _extract_face_embedding(self, image: np.ndarray, face) -> FaceEmbedding:
         validate_face_quality(
             face,
             self.min_det_score,
@@ -93,32 +183,11 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
                 image, face.kps, self.allow_center_crop, bbox=align_bbox
             )
         except AlignmentError as exc:
+            if self.preprocess == "runtime_fallback_center_crop":
+                return self._extract_center_crop_embedding(image)
             raise NoFaceDetectedError(str(exc)) from exc
 
-        import cv2
-
-        if aligned.shape[0] != self.input_size or aligned.shape[1] != self.input_size:
-            aligned = cv2.resize(aligned, (self.input_size, self.input_size))
-
-        rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB)
-        tensor = torch.from_numpy(rgb).float() / 255.0
-        tensor = (tensor - 0.5) / 0.5
-        tensor = tensor.permute(2, 0, 1).unsqueeze(0).to(self.device)
-
-        with torch.no_grad():
-            if self.use_fp16:
-                with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
-                    embeddings = forward_with_normalization(
-                        self.model, tensor, normalize=self.norm_embeddings
-                    )
-            else:
-                embeddings = forward_with_normalization(
-                    self.model, tensor, normalize=self.norm_embeddings
-                )
-
-        vector = embeddings.squeeze(0).float().cpu().numpy().astype(np.float32)
-        if vector.shape[0] != self.dim:
-            raise NoFaceDetectedError("Unexpected embedding dimension")
+        vector = self._embed_aligned_face(aligned)
 
         bbox = tuple(float(value) for value in face.bbox.tolist()) if face.bbox is not None else None
         return FaceEmbedding(
@@ -154,6 +223,8 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         image = decode_image(image_bytes)
         faces = self.detector.detect(image)
         if not faces:
+            if self.preprocess == "runtime_fallback_center_crop":
+                return [self._extract_center_crop_embedding(image)]
             raise NoFaceDetectedError("No face detected")
 
         ordered_faces = sorted(faces, key=lambda detected: detected.det_score, reverse=True)
@@ -180,6 +251,8 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
         image = decode_image(image_bytes)
         faces = self.detector.detect(image)
         if not faces:
+            if self.preprocess == "runtime_fallback_center_crop":
+                return self._extract_center_crop_embedding(image)
             raise NoFaceDetectedError("No face detected")
 
         def area(face) -> float:
@@ -192,17 +265,18 @@ class TorchEmbeddingExtractor(EmbeddingExtractor):
 
     def extract_embedding(self, image_bytes: bytes) -> np.ndarray:
         # Early check: reject multi-face images before expensive embedding step.
-        if self.strict_single_face:
-            if not image_bytes:
-                raise InvalidImageError("Empty image bytes")
-            image = decode_image(image_bytes)
-            faces = self.detector.detect(image)
-            if not faces:
-                raise NoFaceDetectedError("No face detected")
-            if len(faces) != 1:
-                raise MultipleFacesDetectedError("Multiple faces detected")
-            best = max(faces, key=lambda f: f.det_score)
-            return self._extract_face_embedding(image, best).embedding
+        if not image_bytes:
+            raise InvalidImageError("Empty image bytes")
 
-        embeddings = self.extract_embeddings(image_bytes)
-        return embeddings[0].embedding
+        image = decode_image(image_bytes)
+        faces = self.detector.detect(image)
+        if not faces:
+            if self.preprocess == "runtime_fallback_center_crop":
+                return self._extract_center_crop_embedding(image).embedding
+            raise NoFaceDetectedError("No face detected")
+
+        if self.strict_single_face and len(faces) != 1:
+            raise MultipleFacesDetectedError("Multiple faces detected")
+
+        best = max(faces, key=lambda f: f.det_score)
+        return self._extract_face_embedding(image, best).embedding

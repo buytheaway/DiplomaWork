@@ -274,3 +274,29 @@ def test_index_manager_loads_latest_valid_snapshot(tmp_path, db_session):
     assert fallback.load_latest_snapshot(db_session) is True
     fallback_results = fallback.search(np.array([1.0, 0.0, 0.0], dtype=np.float32), k=1)
     assert fallback_results[0].embedding_id == "vec-1"
+
+
+def test_index_manager_skips_snapshot_with_checksum_mismatch(tmp_path, db_session):
+    settings = get_settings().model_copy(
+        update={
+            "index_path": str(tmp_path / "checksummed.faiss"),
+            "embedding_dim": 3,
+        }
+    )
+    manager = IndexManager(settings, model_name="dummy", pipeline="custom")
+    manager.add_embedding("vec-1", np.array([1.0, 0.0, 0.0], dtype=np.float32))
+    manager.save_snapshot(db_session)
+    db_session.commit()
+
+    manager.add_embedding("vec-2", np.array([0.0, 1.0, 0.0], dtype=np.float32))
+    manager.save_snapshot(db_session)
+    db_session.commit()
+
+    latest_snapshot_path = manager.current_snapshot_path
+    assert latest_snapshot_path is not None
+    latest_snapshot_path.write_bytes(latest_snapshot_path.read_bytes() + b"tampered")
+
+    fallback = IndexManager(settings, model_name="dummy", pipeline="custom")
+    assert fallback.load_latest_snapshot(db_session) is True
+    results = fallback.search(np.array([1.0, 0.0, 0.0], dtype=np.float32), k=1)
+    assert results[0].embedding_id == "vec-1"

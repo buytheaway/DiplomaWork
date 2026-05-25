@@ -8,6 +8,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import tempfile
 import uuid
@@ -33,6 +34,28 @@ class IndexMatch:
     embedding_id: str
     score: float
     distance: float
+
+
+class IndexRebuildTooLargeError(RuntimeError):
+    """Raised when API rebuild would load too many embeddings in-process."""
+
+    def __init__(
+        self,
+        *,
+        count: int,
+        limit: int,
+        pipeline: str | None,
+        model_name: str | None,
+    ) -> None:
+        self.count = count
+        self.limit = limit
+        self.pipeline = pipeline
+        self.model_name = model_name
+        super().__init__(
+            "Index rebuild is too large for the backend API path. "
+            f"count={count} limit={limit} pipeline={pipeline} model={model_name}. "
+            "Use scripts/build_scale_index_from_db.py for large indexes."
+        )
 
 
 class IndexManager:
@@ -109,6 +132,45 @@ class IndexManager:
 
     def _snapshot_files_exist(self, path: Path) -> bool:
         return path.exists() and self._map_path_for(path).exists()
+
+    def _file_sha256(self, path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _snapshot_metadata_for(self, path: Path) -> dict[str, Any]:
+        map_path = self._map_path_for(path)
+        return {
+            "pipeline": self.pipeline,
+            "model_name": self.model_name,
+            "dim": self.dim,
+            "index_sha256": self._file_sha256(path),
+            "map_sha256": self._file_sha256(map_path),
+        }
+
+    def _snapshot_matches_metadata(self, path: Path, metadata: dict[str, Any]) -> bool:
+        expected_pipeline = metadata.get("pipeline")
+        expected_model = metadata.get("model_name")
+        expected_dim = metadata.get("dim")
+        if expected_pipeline is not None and expected_pipeline != self.pipeline:
+            return False
+        if expected_model is not None and expected_model != self.model_name:
+            return False
+        if expected_dim is not None and int(expected_dim) != self.dim:
+            return False
+
+        expected_index_hash = metadata.get("index_sha256")
+        if expected_index_hash and self._file_sha256(path) != expected_index_hash:
+            return False
+
+        map_path = self._map_path_for(path)
+        expected_map_hash = metadata.get("map_sha256")
+        if expected_map_hash and self._file_sha256(map_path) != expected_map_hash:
+            return False
+
+        return True
 
     def _snapshot_path_belongs_to_index(self, path: Path) -> bool:
         return (
@@ -198,9 +260,19 @@ class IndexManager:
                     snapshot.path,
                 )
                 continue
+            snapshot_params = dict(snapshot.params or {})
+            metadata = snapshot_params.pop("_snapshot_meta", None)
+            if metadata and not self._snapshot_matches_metadata(snapshot_path, metadata):
+                self._logger.warning(
+                    "Skipping index snapshot id=%s path=%s because metadata/checksum validation failed",
+                    snapshot.id,
+                    snapshot.path,
+                )
+                continue
+
             params = {
                 **self.default_params_for(snapshot.index_type),
-                **snapshot.params,
+                **snapshot_params,
             }
             if snapshot.index_type == "ivfpq":
                 params["nprobe"] = self.settings.ivfpq_nprobe
@@ -235,9 +307,11 @@ class IndexManager:
     def save_snapshot(self, db: Session) -> None:
         snapshot_path = self._save_index_files()
         repo = IndexSnapshotRepo(db)
+        params = dict(self._params)
+        params["_snapshot_meta"] = self._snapshot_metadata_for(snapshot_path)
         snapshot = repo.create(
             index_type=self._index_type,
-            params=self._params,
+            params=params,
             path=str(snapshot_path),
             embeddings_count=self._index.count(),
         )
@@ -263,7 +337,21 @@ class IndexManager:
     def rebuild(self, db: Session, index_type: str, params: dict[str, Any]) -> dict[str, Any]:
         if not params:
             params = self.default_params_for(index_type)
-        embeddings = EmbeddingRepo(db).get_active_embeddings(
+        repo = EmbeddingRepo(db)
+        rebuild_count = repo.count_active_embeddings_for_index(
+            model=self.model_name,
+            pipeline=self.pipeline,
+        )
+        max_embeddings = self.settings.index_rebuild_max_embeddings
+        if max_embeddings > 0 and rebuild_count > max_embeddings:
+            raise IndexRebuildTooLargeError(
+                count=rebuild_count,
+                limit=max_embeddings,
+                pipeline=self.pipeline,
+                model_name=self.model_name,
+            )
+
+        embeddings = repo.get_active_embeddings(
             model=self.model_name,
             pipeline=self.pipeline,
         )

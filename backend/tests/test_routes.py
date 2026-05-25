@@ -730,3 +730,30 @@ def test_index_stats_after_enroll(client):
     resp = client.get("/v1/index/stats")
     assert resp.status_code == 200
     assert resp.json()["embeddings_count"] >= 1
+
+
+def test_index_rebuild_rejects_too_many_embeddings_for_api_path(client, monkeypatch):
+    client.post(
+        "/v1/enroll",
+        files={"file": ("r1.jpg", b"\x89PNG_rebuild_one", "image/jpeg")},
+        data={"label": "RebuildOne", "pipeline": "custom"},
+    )
+    client.post(
+        "/v1/enroll",
+        files={"file": ("r2.jpg", b"\x89PNG_rebuild_two", "image/jpeg")},
+        data={"label": "RebuildTwo", "pipeline": "custom"},
+    )
+    registry = client.app.state.pipeline_registry
+    monkeypatch.setattr(
+        registry.get("custom").index_manager.settings,
+        "index_rebuild_max_embeddings",
+        1,
+    )
+
+    resp = client.post(
+        "/v1/index/rebuild",
+        json={"index_type": "flat", "params": {}, "pipeline": "custom"},
+    )
+
+    assert resp.status_code == 413
+    assert "build_scale_index_from_db.py" in resp.json()["detail"]

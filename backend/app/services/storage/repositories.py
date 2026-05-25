@@ -192,6 +192,26 @@ class EmbeddingRepo:
         )
         return int(self.db.execute(stmt).scalar_one())
 
+    def count_active_embeddings_for_index(
+        self,
+        model: str | None = None,
+        pipeline: str | None = None,
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(Embedding)
+            .join(Person, Embedding.person_id == Person.id)
+            .where(
+                Embedding.is_active.is_(True),
+                Person.status == "active",
+            )
+        )
+        if model is not None:
+            stmt = stmt.where(Embedding.model == model)
+        if pipeline is not None:
+            stmt = stmt.where(Embedding.pipeline == pipeline)
+        return int(self.db.execute(stmt).scalar_one())
+
     def count_active_embeddings_by_pipeline_model(self) -> list[tuple[str, str, int]]:
         stmt = (
             select(Embedding.pipeline, Embedding.model, func.count())

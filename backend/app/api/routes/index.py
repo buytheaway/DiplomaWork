@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_pipeline_registry, require_admin
 from app.api.schemas.index import IndexStatsResponse, RebuildIndexRequest
+from app.services.index.index_manager import IndexRebuildTooLargeError
 from app.services.runtime.pipeline_registry import PipelineRegistry
 from app.services.storage.audit import record_audit_event
 
@@ -43,7 +44,10 @@ def rebuild_index(
         runtime = registry.resolve_search(payload.pipeline)
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    stats = runtime.index_manager.rebuild(db, payload.index_type, payload.params)
+    try:
+        stats = runtime.index_manager.rebuild(db, payload.index_type, payload.params)
+    except IndexRebuildTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     db.commit()
     stats["embedding_backend"] = runtime.backend
     stats["pipeline"] = runtime.key

@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     torch_device: str = Field("cpu", alias="TORCH_DEVICE")
     torch_use_fp16: bool = Field(False, alias="TORCH_USE_FP16")
     torch_norm_embeddings: bool = Field(True, alias="TORCH_NORM_EMBEDDINGS")
+    torch_preprocess: Literal["runtime", "runtime_fallback_center_crop"] = Field(
+        "runtime", alias="TORCH_PREPROCESS"
+    )
+    torch_tta: Literal["none", "hflip"] = Field("none", alias="TORCH_TTA")
 
     # onnx-specific
     onnx_model_path: str = Field("", alias="ONNX_MODEL_PATH")  # legacy single-model
@@ -123,6 +127,9 @@ class Settings(BaseSettings):
     ivfpq_nprobe_safe: int = Field(128, alias="IVFPQ_NPROBE_SAFE")
     search_fallback_margin: float = Field(0.05, alias="SEARCH_FALLBACK_MARGIN")
     index_snapshot_retention: int = Field(3, alias="INDEX_SNAPSHOT_RETENTION")
+    index_rebuild_max_embeddings: int = Field(
+        200_000, ge=0, alias="INDEX_REBUILD_MAX_EMBEDDINGS"
+    )
 
     # ── security / CORS ──────────────────────────────────────────────────
     api_key: str = Field("", alias="API_KEY")
@@ -150,6 +157,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_runtime_configuration(self) -> Settings:
+        origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        if not self.testing and "*" in origins:
+            raise ValueError(
+                "CORS_ORIGINS must not contain '*' when credentials/API keys are enabled"
+            )
+
         if self.default_pipeline == "pretrained" and not self.enable_pretrained_pipeline:
             raise ValueError("DEFAULT_PIPELINE=pretrained requires ENABLE_PRETRAINED_PIPELINE=true")
         if self.default_pipeline == "custom" and not self.enable_custom_pipeline:

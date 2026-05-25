@@ -58,3 +58,13 @@ def test_settings_rejects_missing_yolo_path_for_torch_yolo_detection():
             TORCH_MODEL_PATH="weights.pth",
             YOLO_MODEL_PATH="",
         )
+
+
+def test_settings_rejects_wildcard_cors_origins_when_not_testing():
+    with pytest.raises(ValidationError, match="CORS_ORIGINS"):
+        _settings(
+            TESTING=False,
+            ENABLE_PRETRAINED_PIPELINE=False,
+            ENABLE_CUSTOM_PIPELINE=False,
+            CORS_ORIGINS="*",
+        )
