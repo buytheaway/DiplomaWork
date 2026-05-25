@@ -13,7 +13,6 @@ The output is compatible with the backend snapshot loader:
 from __future__ import annotations
 
 import argparse
-import base64
 import gc
 import json
 import os
@@ -27,7 +26,6 @@ from typing import Any
 
 import faiss
 import numpy as np
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -37,6 +35,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.db.models import Embedding, IndexSnapshot, Person  # noqa: E402
+from app.security.crypto import decrypt_embedding_payload, encrypt_snapshot_payload  # noqa: E402
 
 DEFAULT_PIPELINE = "pretrained"
 DEFAULT_MODEL_NAME = "dummy"
@@ -44,11 +43,6 @@ DEFAULT_BATCH_SIZE = 50_000
 DEFAULT_TRAIN_SIZE = 200_000
 DEFAULT_LIMIT_CONFIRM_THRESHOLD = 100_000
 INDEX_TYPES = ("flat", "hnsw", "ivfpq")
-
-_PAYLOAD_PREFIX = b"ENC1"
-_NONCE_SIZE = 12
-_TEST_KEY = base64.urlsafe_b64encode(b"\x11" * 32).decode("ascii")
-
 
 @dataclass(frozen=True)
 class BuildConfig:
@@ -94,46 +88,6 @@ def positive_int(value: str) -> int:
     if parsed <= 0:
         raise argparse.ArgumentTypeError("value must be a positive integer")
     return parsed
-
-
-def _is_testing() -> bool:
-    return os.getenv("TESTING", "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _decode_key(raw_key: str, *, field_name: str) -> bytes:
-    source = raw_key or (_TEST_KEY if _is_testing() else "")
-    if not source:
-        raise RuntimeError(
-            f"{field_name} must be set, or TESTING=true must be used for a local smoke build"
-        )
-
-    padded = source + ("=" * (-len(source) % 4))
-    try:
-        decoded = base64.urlsafe_b64decode(padded.encode("ascii"))
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"{field_name} must be a urlsafe base64-encoded 32-byte key") from exc
-
-    if len(decoded) != 32:
-        raise RuntimeError(f"{field_name} must decode to exactly 32 bytes")
-    return decoded
-
-
-def _encrypt_snapshot_payload(raw: bytes) -> bytes:
-    raw_key = os.getenv("SNAPSHOT_ENCRYPTION_KEY", "")
-    key = _decode_key(raw_key, field_name="SNAPSHOT_ENCRYPTION_KEY")
-    nonce = os.urandom(_NONCE_SIZE)
-    ciphertext = AESGCM(key).encrypt(nonce, raw, b"faiss-snapshot")
-    return _PAYLOAD_PREFIX + nonce + ciphertext
-
-
-def _decrypt_embedding_payload(blob: bytes) -> bytes:
-    if not blob.startswith(_PAYLOAD_PREFIX):
-        return blob
-    raw_key = os.getenv("DATA_ENCRYPTION_KEY", "")
-    key = _decode_key(raw_key, field_name="DATA_ENCRYPTION_KEY")
-    nonce = blob[len(_PAYLOAD_PREFIX):len(_PAYLOAD_PREFIX) + _NONCE_SIZE]
-    ciphertext = blob[len(_PAYLOAD_PREFIX) + _NONCE_SIZE:]
-    return AESGCM(key).decrypt(nonce, ciphertext, b"embedding-vector")
 
 
 def resolve_index_path(path: str | Path | None) -> Path:
@@ -240,7 +194,7 @@ def iter_embedding_batches(db: Session, config: BuildConfig):
 
 
 def decode_vector(vector_blob: bytes, row_dim: int, expected_dim: int) -> np.ndarray | None:
-    raw = _decrypt_embedding_payload(vector_blob)
+    raw = decrypt_embedding_payload(vector_blob)
     if row_dim != expected_dim:
         return None
     if len(raw) != expected_dim * np.dtype(np.float32).itemsize:
@@ -411,8 +365,8 @@ def write_encrypted_snapshot_files(
         raw_map_path = raw_index_path.with_suffix(raw_index_path.suffix + ".map.json")
         faiss.write_index(index, str(raw_index_path))
         raw_map_path.write_text(json.dumps(id_map), encoding="utf-8")
-        _write_atomic(index_path, _encrypt_snapshot_payload(raw_index_path.read_bytes()))
-        _write_atomic(map_path, _encrypt_snapshot_payload(raw_map_path.read_bytes()))
+        _write_atomic(index_path, encrypt_snapshot_payload(raw_index_path.read_bytes()))
+        _write_atomic(map_path, encrypt_snapshot_payload(raw_map_path.read_bytes()))
     return (
         index_path.stat().st_size / 1024 / 1024,
         map_path.stat().st_size / 1024 / 1024,
