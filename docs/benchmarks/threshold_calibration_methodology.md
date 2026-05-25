@@ -46,16 +46,14 @@ The appropriate threshold depends on the application risk model. Security-first
 systems usually prefer lower FAR, while convenience-oriented systems may accept
 higher FAR to reduce FRR.
 
-## Separation From Retrieval Benchmark
+## Separation From Retrieval Measurements
 
-The synthetic retrieval benchmark in `docs/benchmarks/retrieval_benchmark_pr2.md`
-measures vector index behavior: latency, memory estimate, build time, and
-top-k overlap against exact Flat search.
+Retrieval/index measurements describe vector index behavior: latency, memory
+estimate, build time, and indexed-vector counts after embeddings already exist.
 
 Threshold calibration is a separate biometric verification evaluation. It
-requires labeled positive and negative biometric pairs. The synthetic retrieval
-benchmark has no identity labels, so it cannot produce biometric hit@K, FAR,
-FRR, or EER.
+requires labeled positive and negative biometric pairs. Retrieval latency alone
+cannot produce biometric hit@K, FAR, FRR, or EER.
 
 ## Current Status
 

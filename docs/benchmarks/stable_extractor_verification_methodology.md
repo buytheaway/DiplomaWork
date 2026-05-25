@@ -18,10 +18,10 @@ path uses the backend InsightFace extractor configuration.
 
 ## Separation From Other Benchmarks
 
-This evaluator is separate from the synthetic FAISS retrieval benchmark. The
-synthetic benchmark measures vector index behavior: latency, build time, memory
-estimate, and top-k overlap against exact Flat search. It has no identity
-labels and cannot produce biometric FAR, FRR, EER, or biometric hit@K.
+This evaluator is separate from FAISS retrieval/index measurements. Retrieval
+benchmarks measure vector index behavior such as latency, build time, memory
+estimate, and indexed-vector counts. They cannot replace biometric FAR, FRR,
+EER, or biometric hit-rate evaluation.
 
 This evaluator is also separate from `training/eval_lfw.py`. The training LFW
 script evaluates the custom PyTorch checkpoint branch. The stable extractor

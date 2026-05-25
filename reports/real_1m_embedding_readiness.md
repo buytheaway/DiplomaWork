@@ -12,7 +12,6 @@ truthful 1,000,000 or 2,000,000 real-image embedding benchmark.
 | `datasets/celeba_faces` | real face images | 193,569 | real-image embedding retrieval / training data |
 | `handoff_lfw_eval/lfw` | real labeled verification images | 13,233 | LFW biometric verification only |
 | `data/new_custom_enroll` | local re-enroll photos | 83 | runtime demo enrollment |
-| `C:\Users\mukha\OneDrive\Documents\GitHub\datasets\digiface1m_small` | synthetic face images | 360 | optional synthetic-style scale support, not real biometric evidence |
 
 Local real-image total available for extraction is approximately `206,885`
 images. This supports real-image embedding retrieval benchmarks at 10k, 50k,
@@ -25,12 +24,10 @@ real-image claim.
   TAR@FAR, threshold behavior, and pair verification accuracy.
 - The real-image embedding benchmark uses embeddings extracted from real image
   files and measures FAISS build/search behavior on real model outputs.
-- The synthetic 1M/2M benchmark measures FAISS scalability only.
 
 ## What Cannot Be Claimed Now
 
 - Do not claim that 1,000,000 or 2,000,000 real face images were evaluated.
-- Do not claim that the synthetic 1M/2M benchmark proves biometric accuracy.
 - Do not present LFW `0.990500` accuracy as desktop/live webcam identification
   accuracy. LFW is pair verification; desktop search is end-to-end
   identification.

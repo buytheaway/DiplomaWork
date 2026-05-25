@@ -89,4 +89,4 @@ Note: this smoke used full-resolution stored photos. Live webcam sends resized J
 
 - The current Desktop scale database uses real-image-derived embeddings plus manual enrolled profiles.
 - LFW verification is the real biometric verification experiment.
-- Synthetic 1M/2M vector benchmarks remain separate FAISS scalability stress tests and are not biometric accuracy claims.
+- Real-image embedding benchmarks and scale database checks are reported separately from LFW biometric verification.

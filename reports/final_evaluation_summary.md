@@ -49,8 +49,8 @@ for training in the final evaluation.
 ## Real-Image Embedding Retrieval Benchmark
 
 This benchmark extracts embeddings from real image files using the final custom
-runtime model and builds an isolated FAISS index. It does not use synthetic
-random vectors and does not touch the production database/index.
+runtime model and builds an isolated FAISS index. It does not touch the
+production database/index.
 
 | Metric | Value |
 |---|---:|
@@ -75,25 +75,6 @@ The source folders were `datasets/celeba_faces`, `handoff_lfw_eval/lfw`, and
 `reports/real_image_embedding_benchmark/`. Raw embeddings, FAISS index files,
 mapping CSV files, and image datasets are generated artifacts and should not be
 committed.
-
-## Synthetic 1M/2M FAISS Scalability Benchmark
-
-The 1M/2M benchmark uses synthetic L2-normalized 512D vectors. It measures FAISS
-retrieval scalability, latency, build time, index size, and approximate-search
-agreement with exact Flat retrieval. It is not biometric verification and must
-not be reported as recognition accuracy.
-
-| Dataset size | Method | p50 ms | p95 ms | p99 ms | Build s | Index MB | top_k_overlap@1 | top_k_overlap@5 | top_k_overlap@10 |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1,000,000 | HNSW M=32 efSearch=128 | 1.738500 | 2.304975 | 2.523790 | 982.189322 | 2212.647921 | 0.860000 | 0.244000 | 0.168000 |
-| 1,000,000 | IVF-PQ nlist=4096 m=32 nprobe=32 | 0.347850 | 0.392000 | 0.466494 | 38.337446 | 46.678394 | 1.000000 | 0.208000 | 0.108000 |
-| 2,000,000 | IVF-PQ nlist=4096 m=32 nprobe=32 | 1.096600 | 1.142425 | 1.159439 | 54.552124 | 84.825367 | 1.000000 | 0.208000 | 0.104000 |
-
-Interpretation: HNSW has stronger agreement at 1M but much larger build time
-and index size. IVF-PQ is compact and fast, but the current configuration has
-low `top_k_overlap@5` and `top_k_overlap@10`, so it should be described as a
-memory-efficient scalability setting that needs tuning for higher retrieval
-agreement.
 
 ## Runtime Latency Summary
 
@@ -177,18 +158,16 @@ Safe:
 - The final custom runtime achieved accuracy 0.990500 and EER 0.015000 on that
   LFW evaluation.
 - FAR, FRR, EER, TAR@FAR, and threshold behavior are reported separately from
-  synthetic FAISS benchmarks.
+  retrieval/index latency measurements.
 - A real-image embedding retrieval benchmark was run on embeddings extracted
   from real face image files, with 9802 embeddings created from 10000 attempted
   images.
-- The 1M/2M synthetic benchmark demonstrates FAISS retrieval scalability only.
 - The current local machine contains about 206k real image files available for
   real-image embedding extraction; a truthful 1M/2M real-image benchmark
   requires an additional real dataset such as VGGFace2.
 
 Not safe:
 
-- Do not claim that the 1M/2M synthetic benchmark proves biometric accuracy.
 - Do not claim 1M real face images were evaluated unless a real-image benchmark
   is actually run at that scale.
 - Do not claim 2M real face images were evaluated unless a real-image benchmark

@@ -9,9 +9,10 @@ and easier to evaluate.
 
 ## Why HNSW?
 
-HNSW is a graph-based approximate nearest-neighbor index. In the synthetic
-benchmark, HNSW preserves high top-k overlap on the 10,000-vector run while
-reducing search latency compared with exact Flat search.
+HNSW is a graph-based approximate nearest-neighbor index. In this project it is
+used as the main practical index type for the real-image scale database because
+it gives low-latency nearest-neighbor search while keeping the retrieval path
+simple enough for the final demo.
 
 ## Why IVF-PQ?
 
@@ -24,14 +25,14 @@ be presented as an experimental memory/quality trade-off.
 
 `top_k_overlap@K = |exact_top_K(query) intersection approximate_top_K(query)| / K`.
 
-It measures how much an approximate index agrees with exact Flat search on
-synthetic vectors.
+It measures how much an approximate index agrees with exact Flat search on the
+same vector collection.
 
-## Why Is top_k_overlap@K Not Biometric Accuracy?
+## Why Is Retrieval Latency Not Biometric Accuracy?
 
-The synthetic retrieval benchmark has no identity labels. It measures vector
-retrieval behavior after embeddings already exist. It does not measure whether
-the correct person was identified.
+Retrieval latency measures how fast the index returns nearest vectors after an
+embedding already exists. Biometric accuracy requires labeled positive and
+negative face pairs or a held-out identification protocol.
 
 ## Where Are FAR, FRR, And EER?
 
@@ -73,5 +74,5 @@ support.
 
 The main contribution is an end-to-end biometric face search system: modular
 embedding extractors, FAISS vector indexing, relational metadata storage,
-desktop operator workflow, synthetic retrieval benchmarking, verification
+desktop operator workflow, real-image retrieval benchmarking, verification
 metric methodology, and MVP security/privacy controls.

@@ -53,7 +53,7 @@ Generated: 2026-05-24
 |---|---|---|---|
 | LFW biometric verification | Real labeled face pairs | FAR, FRR, EER, TAR@FAR, threshold behavior, verification accuracy | FAISS scalability or database UI performance |
 | Real-image embedding retrieval benchmark | Embeddings extracted from real face image files | Embedding extraction success, FAISS index build/search latency on real embeddings | FAR/FRR/EER or 1M-scale claims |
-| Synthetic 1M/2M FAISS benchmark | Synthetic L2-normalized 512D vectors | Retrieval scalability, latency, index size, build time, `top_k_overlap@K` | Biometric recognition accuracy or identity hit rate |
+| Scale database smoke | Real-image-derived embeddings in PostgreSQL and FAISS | Database/index scale, UI pagination, indexed-vector counts | Formal biometric verification |
 | Desktop/live identification smoke | Runtime camera/upload workflow | End-to-end identification behavior under demo conditions | LFW FAR/FRR/EER or formal biometric verification accuracy |
 
 ## E. Runtime Latency
@@ -73,20 +73,11 @@ Generated: 2026-05-24
 This is an end-to-end backend search smoke test on the re-enrollment folder.
 It is not a formal held-out desktop accuracy result.
 
-## F. Synthetic 1M/2M Retrieval Scalability
-
-| Dataset size | Method | p50 ms | p95 ms | p99 ms | Build s | Index MB | top_k_overlap@1 | top_k_overlap@5 | top_k_overlap@10 |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1,000,000 | HNSW M=32 efSearch=128 | 1.738500 | 2.304975 | 2.523790 | 982.189322 | 2212.647921 | 0.860000 | 0.244000 | 0.168000 |
-| 1,000,000 | IVF-PQ nlist=4096 m=32 nprobe=32 | 0.347850 | 0.392000 | 0.466494 | 38.337446 | 46.678394 | 1.000000 | 0.208000 | 0.108000 |
-| 2,000,000 | IVF-PQ nlist=4096 m=32 nprobe=32 | 1.096600 | 1.142425 | 1.159439 | 54.552124 | 84.825367 | 1.000000 | 0.208000 | 0.104000 |
-
-## G. Real 1M Readiness
+## F. Real 1M Readiness
 
 | Item | Value |
 |---|---:|
 | Local real images available for extraction | ~206,885 |
-| Local synthetic DigiFace sample images | 360 |
 | Real 1M image benchmark completed | No |
 | Real 2M image benchmark completed | No |
 | Required next dataset for truthful 1M/2M real-image embeddings | VGGFace2 or equivalent |

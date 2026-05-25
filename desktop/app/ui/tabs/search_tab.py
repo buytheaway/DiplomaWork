@@ -1096,9 +1096,9 @@ class SearchTab(QWidget):
                     score = 0.0
                     threshold = 0.0
 
-                # Custom live search uses IVF-PQ over a very large synthetic
-                # index, so low-confidence matches are allowed to draw a box
-                # but must not be promoted to a visible identity.
+                # Custom live search can run over a very large index, so
+                # low-confidence matches are allowed to draw a box but must
+                # not be promoted to a visible identity.
                 required_score = max(threshold, 0.30 if pipeline == "custom" else threshold)
                 if label_value and score >= required_score:
                     candidate = (str(label_value), score)

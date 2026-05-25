@@ -4,7 +4,7 @@ Target duration: 5-7 minutes.
 
 ## 0. Preparation
 
-Use demo or synthetic data only. Do not use real biometric data with example
+Use consented demo data only. Do not use real biometric data with example
 configuration values.
 
 Start backend:
@@ -82,26 +82,23 @@ Say:
 support operational review. Delete is a soft-delete workflow; hard purge is
 future work."
 
-## 6. Benchmark Table
+## 6. Real-Image Metrics And Scale Counts
 
-Open `docs/benchmarks/retrieval_benchmark_pr2.md` or the diploma benchmark
-section.
+Open `reports/final_tables_for_diploma.md`, `reports/scale_full_smoke_report.md`,
+or the diploma benchmark section.
 
 Show:
 
-- Flat exact baseline;
-- HNSW;
-- IVF-PQ;
-- p50/p95/p99 latency;
-- build time;
-- memory estimate;
-- `top_k_overlap@1`, `top_k_overlap@5`, `top_k_overlap@10`.
+- LFW FAR/FRR/EER/TAR@FAR table;
+- real-image embedding benchmark;
+- scale database identities/templates/indexed vectors;
+- runtime latency table.
 
 Say:
 
-"This is a synthetic vector retrieval benchmark. It evaluates FAISS retrieval
-behavior, not biometric recognition accuracy. The metric is
-`top_k_overlap@K`, the overlap with exact Flat top-K neighbors."
+"LFW is the biometric verification protocol. The real-image benchmark and
+scale database show that embeddings extracted from face images can be indexed
+and searched with low FAISS latency."
 
 ## 7. Security And Privacy Summary
 

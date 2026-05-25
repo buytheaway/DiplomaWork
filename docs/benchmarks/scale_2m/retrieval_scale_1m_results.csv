@@ -1,3 +1,0 @@
-source,n_vectors,dim,n_queries,seed,query_seed,method,status,params,build_time_s,mean_ms,p50_ms,p95_ms,p99_ms,memory_estimate_mb,index_file_size_mb,top_k_overlap_at_1,top_k_overlap_at_5,top_k_overlap_at_10,notes,error
-synthetic_memmap,1000000,512,50,42,123,hnsw,ok,"{""M"":32,""efConstruction"":150,""efSearch"":128,""metric"":""inner_product"",""normalized_vectors"":true}",982.189322,1.74034,1.7385,2.304975,2.52379,2212.647921,2212.647921,0.86,0.244,0.168,,
-synthetic_memmap,1000000,512,50,42,123,ivfpq,ok,"{""M_pq"":32,""metric"":""inner_product"",""nbits"":8,""nlist"":4096,""normalized_vectors"":true,""nprobe"":32,""requested_nlist"":4096,""train_size"":200000}",38.337446,0.353613,0.34785,0.392,0.466494,46.678394,46.678394,1.0,0.208,0.108,,

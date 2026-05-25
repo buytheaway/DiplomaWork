@@ -42,9 +42,8 @@ data:
 
 For the custom IR-50 branch, use the prepared CelebA identity folders as the
 main real-face fine-tuning dataset. LFW is evaluation-only and must not be used
-for training or fine-tuning. DigiFace1M may be used as a synthetic warmstart
-dataset or for generating million-scale retrieval data, but final custom model
-fine-tuning should use the real CelebA identity split.
+for training or fine-tuning. Final custom model fine-tuning should use the real
+CelebA identity split.
 
 Each identity must be a directory, and each image under that directory belongs
 to that identity:

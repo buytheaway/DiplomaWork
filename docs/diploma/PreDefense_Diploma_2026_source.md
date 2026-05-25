@@ -1,4 +1,4 @@
-# 1. Introduction
+﻿# 1. Introduction
 
 The rapid growth of digital services, access control infrastructure, and security analytics systems has sharply increased the demand for reliable and fast biometric identification. In many practical scenarios a system is not asked to classify a face into a fixed, closed set of classes. Instead, it must search a large repository and return the most likely candidates for further operator review. This difference is crucial. A classification problem can be solved with a conventional classifier trained for a known set of identities, while an identification search problem requires a flexible similarity-based architecture capable of handling new persons, new embeddings, and large-scale updates over time [1], [2].
 
@@ -43,7 +43,7 @@ Biometric systems are designed to identify or verify a person based on physiolog
 
 At the same time, facial biometrics present a difficult engineering problem. The same person may look different due to illumination, occlusion, head pose, image resolution, aging, facial hair, cosmetics, camera noise, and expression changes. Therefore, robust face search depends not only on the recognition model itself but also on the end-to-end processing pipeline: input validation, detection, alignment, quality control, embedding extraction, similarity computation, thresholding, ranking, and operator review [2], [4].
 
-The literature usually distinguishes between verification and identification. Verification answers the question “Is this person who they claim to be?” Identification answers the question “Who is this person among the entries stored in a database?” The second case is more challenging because the system must compare a probe image with many stored vectors and return the nearest candidates with sufficiently low latency [2], [7]. The present diploma belongs to the identification-search category.
+The literature usually distinguishes between verification and identification. Verification answers the question вЂњIs this person who they claim to be?вЂќ Identification answers the question вЂњWho is this person among the entries stored in a database?вЂќ The second case is more challenging because the system must compare a probe image with many stored vectors and return the nearest candidates with sufficiently low latency [2], [7]. The present diploma belongs to the identification-search category.
 
 ## 2.2. Evolution of Face Recognition Methods
 
@@ -59,7 +59,7 @@ Recognition quality is strongly tied to the quality of detection and alignment. 
 
 RetinaFace and MTCNN are widely referenced detectors in the literature and practical toolchains. The idea is not simply to find a rectangle around a face but to create a stable geometric representation that reduces nuisance variation. This is especially important in systems that must compare many vectors quickly, because vector search quality can only be as good as the embeddings sent into the index.
 
-An important operational policy follows from this observation: the system should not “guess” when the input is ambiguous. In this project, enrollment is intentionally strict and requires exactly one face in the image. Search is more permissive and supports multiple faces, because search often deals with scene images or frames containing more than one person. This distinction reflects a practical interpretation of the literature: data quality rules should depend on the business operation being performed.
+An important operational policy follows from this observation: the system should not вЂњguessвЂќ when the input is ambiguous. In this project, enrollment is intentionally strict and requires exactly one face in the image. Search is more permissive and supports multiple faces, because search often deals with scene images or frames containing more than one person. This distinction reflects a practical interpretation of the literature: data quality rules should depend on the business operation being performed.
 
 ## 2.4. Embeddings and Metric Learning
 
@@ -104,7 +104,7 @@ However, many of these systems are not designed as open research platforms. Thei
 
 Cloud-based image analysis and recognition services offer a different model. They are easy to start with, expose HTTP APIs, and often provide convenient scaling. A developer can send an image and receive labels, matches, or metadata with minimal infrastructure work. These services are attractive for prototypes, but they also introduce several limitations from the perspective of this diploma.
 
-First, data governance becomes more complex when biometric data is sent to external infrastructure. Second, experimentation is constrained by the service provider’s API surface. Third, latency and deployment assumptions depend on network conditions and cloud policy. For a diploma project focused on architecture, reproducibility, and controlled experiments, such external dependence is a significant drawback. It is more appropriate to use local runtimes and explicit indices whose behavior can be explained and tuned by the team.
+First, data governance becomes more complex when biometric data is sent to external infrastructure. Second, experimentation is constrained by the service providerвЂ™s API surface. Third, latency and deployment assumptions depend on network conditions and cloud policy. For a diploma project focused on architecture, reproducibility, and controlled experiments, such external dependence is a significant drawback. It is more appropriate to use local runtimes and explicit indices whose behavior can be explained and tuned by the team.
 
 ## 3.3. Open-Source Face Recognition Stacks
 
@@ -147,7 +147,7 @@ This structure is easy to validate, works well with PyTorch dataset loaders, and
 
 The project is designed to accept external datasets rather than bundle raw training corpora into the repository. This is important for both licensing and practical reasons. Public face datasets may have specific usage restrictions, and large image collections should not be committed directly into the code repository. The codebase instead provides scripts and loaders that transform external inputs into embeddings and index-ready artifacts.
 
-For the final diploma version, the dataset roles are fixed. The main real-face training dataset for the custom IR-50 experiments is CelebA prepared as identity folders under `datasets/celeba_faces/train`, with validation data under `datasets/celeba_faces/val`. LFW is not the training dataset; it is reserved for final labeled-pair verification and threshold analysis through `handoff_lfw_eval/lfw` and `handoff_lfw_eval/lfw/pairs.txt`. Synthetic 512-dimensional vectors are used only for retrieval scalability experiments and do not replace biometric quality evaluation. Optional synthetic or generated sources such as DigiFace1M can be used for warmstart or scale simulation, but they are not presented as the final real-face biometric validation dataset.
+For the final diploma version, the dataset roles are fixed. The main real-face training dataset for the custom model experiments is CelebA prepared as identity folders under `datasets/celeba_faces/train`, with validation data under `datasets/celeba_faces/val`. LFW is not the training dataset; it is reserved for final labeled-pair verification and threshold analysis through `handoff_lfw_eval/lfw` and `handoff_lfw_eval/lfw/pairs.txt`. The scale database and real-image retrieval benchmark use embeddings extracted from real face image files.
 
 The important point is not to claim that all datasets are stored in the repository, but to show that the system defines a reproducible protocol: external data enters through a controlled folder structure, is checked, converted into embeddings, and searched through FAISS. This is consistent with the research-ready goals of the project.
 
@@ -253,9 +253,9 @@ The project evaluates practical behavior along several axes:
 - support for enrollment and search workflows;
 - ability to rebuild and inspect indices;
 - ability to compare model branches;
-- compliance with the “no raw image storage by default” rule.
+- compliance with the вЂњno raw image storage by defaultвЂќ rule.
 
-From an algorithmic perspective, the project distinguishes between synthetic retrieval metrics and biometric verification metrics. The synthetic benchmark reports latency percentiles, build time, serialized index size, and `top_k_overlap@K` against exact Flat search. Biometric verification requires labeled positive and negative pairs and is described through FAR, FRR, EER, TAR@FAR, and threshold behavior. From a system perspective, equally important metrics are the ability to start locally or via Docker, the clarity of API contracts, and the quality of the operator interface.
+From an algorithmic perspective, the project distinguishes between retrieval/index measurements and biometric verification metrics. Retrieval measurements report latency percentiles, build time, serialized index size, and indexed-vector counts after embeddings already exist. Biometric verification requires labeled positive and negative pairs and is described through FAR, FRR, EER, TAR@FAR, and threshold behavior. From a system perspective, equally important metrics are the ability to start locally or via Docker, the clarity of API contracts, and the quality of the operator interface.
 
 ## 5.8. Methodology Conclusion
 
@@ -369,7 +369,7 @@ One of the central technology choices is to perform vector search in FAISS rathe
 
 ## 7.4. Runtime Inference: ONNX and PyTorch
 
-The pretrained baseline is implemented through ONNX runtime assets, while the custom research line is associated with the project’s own model branch. ONNX is attractive for operational inference because it is lightweight, portable, and stable once the model is exported. PyTorch is attractive for training, experimentation, and model customization. This difference reflects a common industry pattern: training-oriented flexibility on one side, deployment-oriented portability on the other.
+The pretrained baseline is implemented through ONNX runtime assets, while the custom research line is associated with the projectвЂ™s own model branch. ONNX is attractive for operational inference because it is lightweight, portable, and stable once the model is exported. PyTorch is attractive for training, experimentation, and model customization. This difference reflects a common industry pattern: training-oriented flexibility on one side, deployment-oriented portability on the other.
 
 ## 7.5. Desktop Interface: PySide6
 
@@ -492,7 +492,7 @@ Despite the prototype status, the project already demonstrates relevance to seve
 
 The main result of the work is not a single accuracy number. It is the successful creation of a complete biometric face search prototype that unites model inference, vector search, storage, desktop interaction, and comparative runtime logic in one architecture. This is the central contribution of the project.
 
-The scientific and engineering contribution must be separated from external algorithms. The project does not claim to invent ArcFace, SCRFD, HNSW, IVF-PQ, or a new biometric loss. Those are external methods and libraries used as components. The author's contribution is the integrated system: a modular FastAPI backend, desktop operator client, custom Torch pipeline integration, storage and encryption logic for biometric templates, FAISS index management, real LFW verification reporting, synthetic scalability benchmarking, and clear claim boundaries for biometric quality versus retrieval behavior.
+The scientific and engineering contribution must be separated from external algorithms. The project does not claim to invent ArcFace, SCRFD, HNSW, IVF-PQ, or a new biometric loss. Those are external methods and libraries used as components. The author's contribution is the integrated system: a modular FastAPI backend, desktop operator client, custom Torch pipeline integration, storage and encryption logic for biometric templates, FAISS index management, real LFW verification reporting, real-image retrieval benchmarking, and clear claim boundaries for biometric quality versus retrieval behavior.
 
 [[PAGE_BREAK]]
 # 10. Security and Privacy Considerations
@@ -519,10 +519,9 @@ The final custom runtime uses `torch_insightface_iresnet100` with `runtime_fallb
 
 The following claim boundaries keep the defense narrative aligned with the implementation:
 
-- It is correct to say that FAISS-based vector retrieval is implemented and benchmarked on synthetic embeddings.
-- It is correct to say that Flat, HNSW, and IVF-PQ are available as index methods in the research benchmark.
-- It is correct to say that `top_k_overlap@K` measures overlap with exact Flat top-K neighbors in the synthetic benchmark.
-- It is not correct to call `top_k_overlap@K` biometric identification hit@K.
+- It is correct to say that FAISS-based vector retrieval is implemented and benchmarked on embeddings extracted from real face images.
+- It is correct to say that HNSW and IVF-PQ are available as FAISS index methods.
+- It is correct to report retrieval latency separately from biometric verification accuracy.
 - It is correct to report the tracked LFW FAR/FRR/EER/TAR@FAR results for the custom Torch IR-50 pipeline and the pretrained ONNX/InsightFace baseline.
 - It is not correct to claim that the custom pipeline is better than the pretrained baseline.
 - It is correct to say that the stable extractor pair evaluator exists and can evaluate ONNX, InsightFace, Torch, or Dummy backends.
@@ -538,46 +537,45 @@ The following claim boundaries keep the defense narrative aligned with the imple
 
 The current evaluation plan is divided into three layers:
 
-- synthetic vector retrieval benchmark;
-- biometric verification threshold methodology;
-- stable extractor pair evaluator readiness.
+- LFW biometric verification;
+- real-image embedding retrieval benchmark;
+- runtime scale database and desktop smoke checks.
 
-This separation is important. Vector retrieval evaluation measures FAISS index behavior after embeddings already exist. Biometric verification evaluation measures whether similarity scores separate same-identity and different-identity pairs. Runtime demonstration shows that API, desktop, storage, and indexing workflows operate together, but it is not a substitute for labeled biometric accuracy evaluation.
+This separation is important. Retrieval evaluation measures FAISS index behavior after embeddings already exist. Biometric verification evaluation measures whether similarity scores separate same-identity and different-identity pairs. Runtime demonstration shows that API, desktop, storage, and indexing workflows operate together, but it is not a substitute for labeled biometric accuracy evaluation.
 
-## 13.2. Synthetic Retrieval Benchmark Methodology
+## 13.2. Real-Image Embedding Retrieval Benchmark
 
-The synthetic retrieval benchmark uses L2-normalized 512-dimensional embeddings generated with a fixed NumPy seed. Flat exact search is used as the baseline. HNSW and IVF-PQ are evaluated as approximate indexes. Latency is measured as repeated single-query `index.search` calls after warmup. Build time includes index construction and vector insertion; IVF-PQ build time also includes training. Memory estimate is computed as serialized FAISS index size, not full process RSS.
+The real-image embedding benchmark extracts embeddings from actual face image files using the final custom Torch runtime model and builds an isolated FAISS retrieval index. This verifies that retrieval measurements are based on real model outputs rather than arbitrary database counters.
 
-The retrieval metric is:
+| Metric | Value |
+|---|---:|
+| Real images scanned | 206802 |
+| Images attempted | 10000 |
+| Embeddings created | 9802 |
+| Skipped multiple-face images | 198 |
+| Embedding dimension | 512 |
+| Index type | HNSW |
+| Index size | 21.76 MB |
+| Search p50 | 0.141150 ms |
+| Search p95 | 0.194645 ms |
+| Search p99 | 0.338031 ms |
 
-`top_k_overlap@K = |exact_top_K(query) ∩ approximate_top_K(query)| / K`
+## 13.3. Scale Database Smoke
 
-This is not biometric identification hit@K and not biometric accuracy. The benchmark has no identity labels and therefore cannot measure whether a person was correctly identified. It only measures how closely an approximate index reproduces exact Flat nearest-neighbor retrieval on synthetic vectors.
+The final local scale database was prepared with real-image-derived embeddings and manual demo identities. The Desktop Database tab and backend stats endpoint report identities, templates, and indexed vectors separately.
 
-## 13.3. Synthetic Retrieval Benchmark Results
-
-The following values are copied from `docs/benchmarks/retrieval_benchmark_pr2.md`. No values were changed or estimated.
-
-| Database size | Embedding dim | Queries | Seed | Method | Index parameters | Build time (s) | Memory estimate (MB) | p50 latency (ms) | p95 latency (ms) | p99 latency (ms) | top_k_overlap@1 | top_k_overlap@5 | top_k_overlap@10 |
-|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 100 | 512 | 100 | 42 | flat | `{"metric":"inner_product","normalized_vectors":true}` | 0.000081 | 0.195355 | 0.004500 | 0.008610 | 0.021691 | 1.000000 | 1.000000 | 1.000000 |
-| 100 | 512 | 100 | 42 | hnsw_ef64 | `{"M":32,"efConstruction":200,"efSearch":64,"metric":"inner_product","normalized_vectors":true}` | 0.001760 | 0.221331 | 0.022700 | 0.024515 | 0.034254 | 1.000000 | 1.000000 | 1.000000 |
-| 100 | 512 | 100 | 42 | ivfpq_nprobe8 | `{"M_pq":16,"metric":"inner_product","nbits":4,"nlist":16,"normalized_vectors":true,"nprobe":8}` | 0.019342 | 0.064320 | 0.008500 | 0.009210 | 0.009929 | 1.000000 | 0.290000 | 0.401000 |
-| 1000 | 512 | 100 | 42 | flat | `{"metric":"inner_product","normalized_vectors":true}` | 0.000552 | 1.953168 | 0.037450 | 0.052320 | 0.059548 | 1.000000 | 1.000000 | 1.000000 |
-| 1000 | 512 | 100 | 42 | hnsw_ef64 | `{"M":32,"efConstruction":200,"efSearch":64,"metric":"inner_product","normalized_vectors":true}` | 0.013336 | 2.212221 | 0.061900 | 0.070200 | 0.072136 | 1.000000 | 0.994000 | 0.997000 |
-| 1000 | 512 | 100 | 42 | ivfpq_nprobe8 | `{"M_pq":16,"metric":"inner_product","nbits":4,"nlist":16,"normalized_vectors":true,"nprobe":8}` | 0.070546 | 0.078053 | 0.019800 | 0.020505 | 0.021358 | 0.130000 | 0.056000 | 0.052000 |
-| 10000 | 512 | 100 | 42 | flat | `{"metric":"inner_product","normalized_vectors":true}` | 0.005819 | 19.531293 | 0.616750 | 0.976610 | 1.045482 | 1.000000 | 1.000000 | 1.000000 |
-| 10000 | 512 | 100 | 42 | hnsw_ef64 | `{"M":32,"efConstruction":200,"efSearch":64,"metric":"inner_product","normalized_vectors":true}` | 1.786023 | 22.123201 | 0.333450 | 0.460055 | 0.472427 | 1.000000 | 0.994000 | 0.987000 |
-| 10000 | 512 | 100 | 42 | ivfpq_nprobe8 | `{"M_pq":16,"metric":"inner_product","nbits":4,"nlist":16,"normalized_vectors":true,"nprobe":8}` | 0.174341 | 0.215382 | 0.131150 | 0.148080 | 0.167981 | 0.030000 | 0.012000 | 0.009000 |
-
-The benchmark environment was Windows 11, Python 3.12.10, NumPy 2.4.2, FAISS 1.13.2, 20 CPU threads, 512-dimensional embeddings, 100 queries per database size, seed 42, and query seed 123. A 100,000-vector result is not reported because that run was not executed for these tracked artifacts.
+| Metric | Value |
+|---|---:|
+| Active identities | 5741 |
+| Active templates | 2015076 |
+| Custom templates | 2015037 |
+| Pretrained templates | 39 |
+| Custom indexed vectors | 2015037 |
+| Pretrained indexed vectors | 39 |
 
 ## 13.4. Interpretation
 
-Flat is the exact baseline used to compute reference nearest-neighbor lists. Flat may be faster on very small datasets because approximate-index overhead is not justified. As database size grows, HNSW becomes useful because it preserves high top-k overlap while reducing search latency in the 10,000-vector run. IVF-PQ reduces serialized index size in the current configuration, but the measured top-k overlap is low on these synthetic vectors. Therefore, the IVF-PQ configuration should be presented as a memory-saving experimental setting rather than as a quality-equivalent replacement for exact search.
-
-The synthetic retrieval benchmark evaluates vector retrieval behavior, not biometric recognition quality.
-
+The real-image benchmark and scale database check evaluate retrieval/index behavior after face embeddings are extracted. They do not replace LFW FAR/FRR/EER verification. The LFW protocol remains the biometric quality measurement, while FAISS index measurements explain runtime retrieval behavior and scalability of stored templates.
 ## 13.5. Verification Metrics and Threshold Calibration
 
 The project includes pure NumPy helpers for biometric verification metrics:
@@ -591,7 +589,7 @@ The project includes pure NumPy helpers for biometric verification metrics:
 
 The score convention is explicit: higher score means more similar, and `score >= threshold` means match. Raising the threshold lowers FAR and increases FRR. Lowering the threshold increases FAR and lowers FRR. This threshold behavior must be calibrated on labeled positive and negative pairs.
 
-The final LFW labeled-pair evaluation was run for the final custom Torch runtime model and for the pretrained ONNX/InsightFace baseline. The final custom `torch_insightface_iresnet100` pipeline achieved EER 0.015000, best accuracy 0.990500, and TAR@FAR=0.01 equal to 0.984667 on 6000/6000 valid pairs with zero skipped pairs. The selected runtime threshold is 0.205047, with FAR 0.001667 and FRR 0.017333 at that threshold. The pretrained baseline achieved EER 0.027852, best accuracy 0.984556, and TAR@FAR=0.01 equal to 0.971141 on 5957 valid pairs. These values are real biometric verification metrics and must be interpreted separately from synthetic FAISS retrieval metrics.
+The final LFW labeled-pair evaluation was run for the final custom Torch runtime model and for the pretrained ONNX/InsightFace baseline. The final custom `torch_insightface_iresnet100` pipeline achieved EER 0.015000, best accuracy 0.990500, and TAR@FAR=0.01 equal to 0.984667 on 6000/6000 valid pairs with zero skipped pairs. The selected runtime threshold is 0.205047, with FAR 0.001667 and FRR 0.017333 at that threshold. The pretrained baseline achieved EER 0.027852, best accuracy 0.984556, and TAR@FAR=0.01 equal to 0.971141 on 5957 valid pairs. These values are real biometric verification metrics and must be interpreted separately from retrieval latency and index-size measurements.
 
 ## 13.6. Stable Extractor Evaluator
 
@@ -604,7 +602,7 @@ The final evaluation uses `handoff_lfw_eval/lfw` and `handoff_lfw_eval/lfw/pairs
 The current evaluation state has clear limitations:
 
 - LFW metrics are now reported for the final custom runtime model, but they remain an evaluation result rather than a guarantee for every operating condition;
-- the synthetic retrieval benchmark is not biometric accuracy;
+- retrieval latency and index-size measurements are not biometric accuracy;
 - historical `torch_ir50` embeddings remain incompatible with the final `torch_insightface_iresnet100` embedding space and must be re-enrolled or re-imported from source images;
 - a 100,000-vector benchmark is not reported because it was not run for the tracked PR 2 artifacts;
 - liveness, spoofing resistance, and operational abuse testing remain future work.
@@ -625,21 +623,21 @@ Future work may include larger-scale benchmarking, labeled stable-extractor thre
 [[PAGE_BREAK]]
 # 15. References
 
-1. Jain, A. K., Ross, A., and Prabhakar, S. “An Introduction to Biometric Recognition.” IEEE Transactions on Circuits and Systems for Video Technology, 2004.
+1. Jain, A. K., Ross, A., and Prabhakar, S. вЂњAn Introduction to Biometric Recognition.вЂќ IEEE Transactions on Circuits and Systems for Video Technology, 2004.
 2. Li, S. Z., and Jain, A. K. *Handbook of Face Recognition*. Springer, 2011.
-3. Bowyer, K. W., Chang, K., and Flynn, P. “A Survey of Approaches and Challenges in 3D and Multi-Modal 3D+2D Face Recognition.” Computer Vision and Image Understanding, 2006.
-4. Deng, J., Guo, J., Zhou, Y., Yu, J., Kotsia, I., and Zafeiriou, S. “RetinaFace: Single-Shot Multi-Level Face Localisation in the Wild.” 2020.
-5. Johnson, J., Douze, M., and Jégou, H. “Billion-Scale Similarity Search with GPUs.” IEEE Transactions on Big Data, 2019.
-6. Liu, W., Wen, Y., Yu, Z., Li, M., Raj, B., and Song, L. “SphereFace: Deep Hypersphere Embedding for Face Recognition.” CVPR, 2017.
-7. Phillips, P. J., et al. “An Introduction to the Good, the Bad, & the Ugly Face Recognition Challenge Problem.” FG, 2011.
-8. Turk, M., and Pentland, A. “Eigenfaces for Recognition.” Journal of Cognitive Neuroscience, 1991.
-9. Ahonen, T., Hadid, A., and Pietikäinen, M. “Face Description with Local Binary Patterns.” ECCV, 2004.
-10. Schroff, F., Kalenichenko, D., and Philbin, J. “FaceNet: A Unified Embedding for Face Recognition and Clustering.” CVPR, 2015.
-11. Deng, J., Guo, J., Xue, N., and Zafeiriou, S. “ArcFace: Additive Angular Margin Loss for Deep Face Recognition.” CVPR, 2019.
-12. Zhang, K., Zhang, Z., Li, Z., and Qiao, Y. “Joint Face Detection and Alignment Using Multi-Task Cascaded Convolutional Networks.” IEEE Signal Processing Letters, 2016.
-13. Malkov, Y. A., and Yashunin, D. A. “Efficient and Robust Approximate Nearest Neighbor Search Using Hierarchical Navigable Small World Graphs.” IEEE TPAMI, 2020.
-14. Jégou, H., Douze, M., and Schmid, C. “Product Quantization for Nearest Neighbor Search.” IEEE TPAMI, 2011.
+3. Bowyer, K. W., Chang, K., and Flynn, P. вЂњA Survey of Approaches and Challenges in 3D and Multi-Modal 3D+2D Face Recognition.вЂќ Computer Vision and Image Understanding, 2006.
+4. Deng, J., Guo, J., Zhou, Y., Yu, J., Kotsia, I., and Zafeiriou, S. вЂњRetinaFace: Single-Shot Multi-Level Face Localisation in the Wild.вЂќ 2020.
+5. Johnson, J., Douze, M., and JГ©gou, H. вЂњBillion-Scale Similarity Search with GPUs.вЂќ IEEE Transactions on Big Data, 2019.
+6. Liu, W., Wen, Y., Yu, Z., Li, M., Raj, B., and Song, L. вЂњSphereFace: Deep Hypersphere Embedding for Face Recognition.вЂќ CVPR, 2017.
+7. Phillips, P. J., et al. вЂњAn Introduction to the Good, the Bad, & the Ugly Face Recognition Challenge Problem.вЂќ FG, 2011.
+8. Turk, M., and Pentland, A. вЂњEigenfaces for Recognition.вЂќ Journal of Cognitive Neuroscience, 1991.
+9. Ahonen, T., Hadid, A., and PietikГ¤inen, M. вЂњFace Description with Local Binary Patterns.вЂќ ECCV, 2004.
+10. Schroff, F., Kalenichenko, D., and Philbin, J. вЂњFaceNet: A Unified Embedding for Face Recognition and Clustering.вЂќ CVPR, 2015.
+11. Deng, J., Guo, J., Xue, N., and Zafeiriou, S. вЂњArcFace: Additive Angular Margin Loss for Deep Face Recognition.вЂќ CVPR, 2019.
+12. Zhang, K., Zhang, Z., Li, Z., and Qiao, Y. вЂњJoint Face Detection and Alignment Using Multi-Task Cascaded Convolutional Networks.вЂќ IEEE Signal Processing Letters, 2016.
+13. Malkov, Y. A., and Yashunin, D. A. вЂњEfficient and Robust Approximate Nearest Neighbor Search Using Hierarchical Navigable Small World Graphs.вЂќ IEEE TPAMI, 2020.
+14. JГ©gou, H., Douze, M., and Schmid, C. вЂњProduct Quantization for Nearest Neighbor Search.вЂќ IEEE TPAMI, 2011.
 15. Nielsen, J. *Usability Engineering*. Morgan Kaufmann, 1994.
-16. ISO/IEC 24745. *Information Technology — Security Techniques — Biometric Information Protection*.
+16. ISO/IEC 24745. *Information Technology вЂ” Security Techniques вЂ” Biometric Information Protection*.
 17. Cavoukian, A. *Privacy by Design: The 7 Foundational Principles*. Information and Privacy Commissioner of Ontario, 2011.
-18. Ramírez, S. *FastAPI Documentation*. FastAPI official documentation.
+18. RamГ­rez, S. *FastAPI Documentation*. FastAPI official documentation.

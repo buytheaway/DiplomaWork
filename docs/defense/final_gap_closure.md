@@ -20,23 +20,14 @@ model in every operating condition.
 
 ## 2. IVF-PQ Interpretation
 
-The PR2 synthetic benchmark shows that IVF-PQ is not quality-equivalent at small
-scales in the current configuration:
-
-| Vectors | IVF-PQ top_k_overlap@1 | IVF-PQ top_k_overlap@5 | IVF-PQ top_k_overlap@10 |
-|---:|---:|---:|---:|
-| 1,000 | 0.130 | 0.056 | 0.052 |
-| 10,000 | 0.030 | 0.012 | 0.009 |
-
 Safe claim: IVF-PQ was evaluated as a compressed memory-saving experimental
-index; in the current small-scale configuration it has poor agreement with exact
-Flat search and should not be presented as the best-quality index.
+index type. For the final runtime demo, HNSW is the practical default because
+it supports low-latency retrieval on the real-image scale database without
+changing the biometric verification protocol.
 
 Recommended demo/research framing:
 
-- Flat is the exact baseline.
-- HNSW is the better quality-preserving approximate option in the PR2 small
-  synthetic benchmark.
+- HNSW is the primary final-demo index for the custom runtime.
 - IVF-PQ is relevant for memory/scalability experiments, but requires parameter
   tuning and/or reranking before being used as a high-quality retrieval path.
 
@@ -49,8 +40,7 @@ Final dataset roles:
 | `datasets/celeba_faces/train` | Main real-face training dataset | Custom Torch fine-tuning and candidate experiments |
 | `datasets/celeba_faces/val` | Validation split | Training sanity checks and dataset validation |
 | `handoff_lfw_eval/lfw` | Evaluation-only dataset | FAR/FRR/EER/TAR@FAR verification |
-| Synthetic 512D vectors | Retrieval scalability benchmark | FAISS latency, index size, build time, top_k_overlap@K |
-| DigiFace1M or synthetic identity/sample generation | Optional future/scale data | Warmstart or large-scale retrieval simulation, not final biometric quality evidence |
+| Scale PostgreSQL database | Real-image-derived retrieval database | Database UI pagination, indexed vector counts, runtime smoke checks |
 
 LFW must be described as evaluation-only in the final diploma. It should not be
 presented as the final training dataset.
@@ -83,7 +73,7 @@ Implemented by this project:
 - Pipeline registry for pretrained and custom embedding backends.
 - Custom Torch runtime integration and evaluation scripts, including the final
   `torch_insightface_iresnet100` candidate.
-- FAISS index management, snapshot handling, and retrieval benchmarks.
+- FAISS index management, snapshot handling, and real-image retrieval benchmarks.
 - PostgreSQL/SQLite metadata storage and paginated database views.
 - Security hardening for API keys, encryption of stored embeddings/snapshots,
   rate limiting, and audit-friendly operations.

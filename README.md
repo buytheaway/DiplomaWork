@@ -111,8 +111,8 @@ Latest recorded scale smoke state:
 | Pretrained indexed vectors | 39 |
 
 The scale database contains real-image-derived embeddings plus manually enrolled
-profiles. Synthetic vector benchmarks are separate and must not be mixed with
-biometric accuracy claims.
+profiles. Final demo and reporting should use the real-image database, LFW
+verification metrics, and real-image embedding benchmark outputs.
 
 ## Manual Backend Run
 
@@ -264,7 +264,7 @@ Keep these tracks separate:
 |---|---|---|---|
 | LFW biometric verification | Real labeled face pairs | FAR, FRR, EER, TAR@FAR, threshold behavior | FAISS scalability |
 | Real-image embedding benchmark | Embeddings extracted from real images | Extraction success, FAISS build/search latency | FAR/FRR/EER |
-| Synthetic 1M/2M benchmark | Synthetic normalized vectors | FAISS scalability, build time, index size, overlap | Biometric accuracy |
+| Scale database smoke | Real-image-derived embeddings in PostgreSQL and FAISS | Database/index scale, UI pagination, indexed-vector counts | Formal biometric verification |
 | Desktop/live smoke | Runtime backend workflow | End-to-end demo behavior and latency | Formal LFW verification |
 
 ## LFW Evaluation
@@ -336,24 +336,6 @@ python scripts\benchmark_real_image_embeddings.py `
   --top-k 10 `
   --index-type hnsw
 ```
-
-## Synthetic FAISS Scalability Benchmark
-
-The synthetic benchmark uses generated L2-normalized 512D vectors. It is a
-retrieval scalability stress test only.
-
-Tracked 1M/2M results are documented under:
-
-```text
-docs/benchmarks/scale_2m/
-```
-
-Interpretation:
-
-- HNSW has stronger retrieval agreement but larger memory/build cost.
-- IVF-PQ is compact and fast.
-- IVF-PQ at small scales with poor `top_k_overlap` must be described as
-  unsuitable or poorly tuned for small datasets, not as biometric accuracy.
 
 ## Importing New Custom Faces
 

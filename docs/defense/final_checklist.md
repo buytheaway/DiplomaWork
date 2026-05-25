@@ -7,25 +7,9 @@
 - Start backend and check `GET /v1/health`.
 - Start desktop client from `desktop/.venv`.
 - Prepare one enroll image and one search image.
-- Open `docs/benchmarks/retrieval_benchmark_pr2.md`.
 - Open the security/privacy section in README or the diploma source.
 
 ## Numbers To Show
-
-Use the tracked PR2 synthetic retrieval benchmark values for vector retrieval
-behavior:
-
-| Size | Method | p50 ms | p95 ms | p99 ms | Build s | Memory MB | top_k_overlap@1 | top_k_overlap@5 | top_k_overlap@10 |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 100 | flat | 0.004500 | 0.008610 | 0.021691 | 0.000081 | 0.195355 | 1.000000 | 1.000000 | 1.000000 |
-| 100 | hnsw_ef64 | 0.022700 | 0.024515 | 0.034254 | 0.001760 | 0.221331 | 1.000000 | 1.000000 | 1.000000 |
-| 100 | ivfpq_nprobe8 | 0.008500 | 0.009210 | 0.009929 | 0.019342 | 0.064320 | 1.000000 | 0.290000 | 0.401000 |
-| 1000 | flat | 0.037450 | 0.052320 | 0.059548 | 0.000552 | 1.953168 | 1.000000 | 1.000000 | 1.000000 |
-| 1000 | hnsw_ef64 | 0.061900 | 0.070200 | 0.072136 | 0.013336 | 2.212221 | 1.000000 | 0.994000 | 0.997000 |
-| 1000 | ivfpq_nprobe8 | 0.019800 | 0.020505 | 0.021358 | 0.070546 | 0.078053 | 0.130000 | 0.056000 | 0.052000 |
-| 10000 | flat | 0.616750 | 0.976610 | 1.045482 | 0.005819 | 19.531293 | 1.000000 | 1.000000 | 1.000000 |
-| 10000 | hnsw_ef64 | 0.333450 | 0.460055 | 0.472427 | 1.786023 | 22.123201 | 1.000000 | 0.994000 | 0.987000 |
-| 10000 | ivfpq_nprobe8 | 0.131150 | 0.148080 | 0.167981 | 0.174341 | 0.215382 | 0.030000 | 0.012000 | 0.009000 |
 
 Use the tracked LFW labeled-pair results for biometric verification quality:
 
@@ -44,8 +28,6 @@ also run on embeddings extracted from real face image files:
 ## Do Not Claim
 
 - The final custom model is guaranteed to outperform every external model in every operating condition.
-- Synthetic top_k_overlap is biometric accuracy.
-- The 1M/2M synthetic benchmark proves biometric accuracy.
 - 1M real biometric images were evaluated unless a real-image benchmark at that scale is actually run.
 - Full DDoS protection.
 - Full RBAC.

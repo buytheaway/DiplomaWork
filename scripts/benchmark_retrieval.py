@@ -1,10 +1,10 @@
 """Benchmark FAISS retrieval methods: Flat vs HNSW vs IVF-PQ.
 
 The script measures top-k overlap@1/5/10, single-query latency percentiles,
-serialized index size, and index build time. It can run on synthetic
-unit-normalized embeddings or vectors reconstructed from an existing FAISS
-index. Results are written as JSON, CSV, and Markdown so they can be used in
-the diploma only after an actual local run.
+serialized index size, and index build time. It can run on generated
+unit-normalized vectors or vectors reconstructed from an existing FAISS index.
+Results are written as JSON, CSV, and Markdown so they can be used only after an
+actual local run.
 
 Usage:
 
@@ -418,7 +418,7 @@ def write_markdown(path: Path, meta: dict[str, Any], rows: list[dict[str, Any]])
         "",
         "## Methodology",
         "",
-        "- Synthetic embeddings are generated with NumPy RandomState unless a source FAISS index is provided.",
+        "- Generated vectors use NumPy RandomState unless a source FAISS index is provided.",
         "- All vectors are L2-normalized and searched with inner-product similarity.",
         "- Query vectors are sampled from the benchmark database without replacement using the query seed.",
         "- Flat exact search is used as the ground truth for top-k overlap@1, @5, and @10.",
@@ -530,18 +530,18 @@ def parse_args() -> argparse.Namespace:
         "--n-vectors",
         type=positive_int,
         default=9240,
-        help="Number of synthetic vectors when --sizes is not provided",
+        help="Number of generated vectors when --sizes is not provided",
     )
     parser.add_argument(
         "--sizes",
         type=positive_int,
         nargs="+",
         default=None,
-        help="Synthetic database sizes to benchmark",
+        help="Generated-vector database sizes to benchmark",
     )
     parser.add_argument("--dim", type=positive_int, default=512, help="Vector dimensionality")
     parser.add_argument("--n-queries", type=positive_int, default=500, help="Queries per size")
-    parser.add_argument("--seed", type=int, default=42, help="Synthetic vector seed")
+    parser.add_argument("--seed", type=int, default=42, help="Generated vector seed")
     parser.add_argument("--query-seed", type=int, default=123, help="Query sampling seed")
     parser.add_argument("--latency-warmup", type=positive_int, default=50)
     parser.add_argument("--latency-runs", type=positive_int, default=500)
@@ -572,7 +572,7 @@ def main() -> None:
 
     source_index_path = Path(args.source_index) if args.source_index else None
     if source_index_path is not None and args.sizes is not None:
-        raise SystemExit("--sizes is only supported for synthetic benchmarks")
+        raise SystemExit("--sizes is only supported for generated-vector benchmarks")
     if source_index_path is not None and not source_index_path.exists():
         raise SystemExit(f"Source index not found: {source_index_path}")
 
@@ -587,9 +587,9 @@ def main() -> None:
         sizes = args.sizes or [args.n_vectors]
         dim = args.dim
         for n_vectors in sizes:
-            print(f"Generating {n_vectors} synthetic vectors, dim={dim}, seed={args.seed} ...")
+            print(f"Generating {n_vectors} vectors, dim={dim}, seed={args.seed} ...")
             vectors = generate_vectors(n_vectors, dim, args.seed)
-            rows.extend(benchmark_size(vectors, args, source_label="synthetic"))
+            rows.extend(benchmark_size(vectors, args, source_label="generated"))
 
     meta = {
         "environment": environment_snapshot(),

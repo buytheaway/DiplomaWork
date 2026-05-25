@@ -1,8 +1,7 @@
 # LFW Biometric Verification Results
 
 This document closes the real-biometric-metrics gap for the final diploma
-version. It reports labeled-pair verification metrics, not synthetic retrieval
-metrics.
+version. It reports labeled-pair verification metrics.
 
 ## Protocol
 
@@ -61,10 +60,8 @@ If a checkpoint was selected using LFW feedback, the corresponding LFW numbers
 must be treated as validation-stage evidence rather than a fully independent
 generalization test.
 
-## Separation From Retrieval Scalability
+## Separation From Retrieval Measurements
 
 These LFW results evaluate biometric verification quality. They are separate
-from FAISS retrieval scalability experiments on synthetic 512D vectors. The
-synthetic `top_k_overlap@K` benchmark measures approximate-index agreement with
-exact Flat search and must not be described as biometric FAR, FRR, EER, or
-identification accuracy.
+from FAISS retrieval and indexing measurements. Retrieval latency or index size
+must not be described as biometric FAR, FRR, EER, or identification accuracy.

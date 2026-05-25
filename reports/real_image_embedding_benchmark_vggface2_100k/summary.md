@@ -2,9 +2,7 @@
 
 ## Methodology
 
-This benchmark extracts embeddings from real face image files with the final custom Torch runtime model and builds a separate FAISS retrieval index. It does not use synthetic random vectors and does not touch the production database/index.
-
-Synthetic 1M/2M FAISS benchmarks remain scalability-only experiments and are not biometric accuracy measurements.
+This benchmark extracts embeddings from real face image files with the final custom Torch runtime model and builds a separate FAISS retrieval index. It does not touch the production database/index.
 
 ## Runtime
 
@@ -159,5 +157,4 @@ LFW is a real biometric verification protocol. These metrics evaluate identity v
 
 - LFW verification closes the biometric-metrics gap with real image pairs.
 - This real-image retrieval benchmark proves that retrieval measurements were also run on embeddings extracted from real images.
-- The synthetic 1M/2M benchmark should be described only as FAISS scalability testing, not biometric recognition accuracy.
 - Do not claim 1M real-image vectors unless a real dataset import actually creates 1M real-image embeddings.

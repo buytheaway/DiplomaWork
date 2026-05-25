@@ -42,6 +42,6 @@ negative pair counts, skipped-pair counts, and score statistics.
 ## Important Boundary
 
 LFW results are biometric verification metrics. They are not the same as the
-synthetic FAISS retrieval benchmark. LFW must remain evaluation-only in the
-final diploma narrative; the final real-face fine-tuning dataset is CelebA
+FAISS retrieval/index latency measurements. LFW must remain evaluation-only in
+the final diploma narrative; the final real-face fine-tuning dataset is CelebA
 identity folders, with train and validation splits under `datasets/celeba_faces`.
