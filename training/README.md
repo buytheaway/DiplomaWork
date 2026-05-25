@@ -34,22 +34,29 @@ training/
 
 ```yaml
 data:
-  train_dir: "data/casia_webface/train"
-  val_dir: "data/casia_webface/val"
+  train_dir: "datasets/celeba_faces/train"
+  val_dir: "datasets/celeba_faces/val"
   lfw_dir: "data/lfw_aligned"
   pairs_file: "data/lfw/pairs.txt"
 ```
+
+For the custom IR-50 branch, use the prepared CelebA identity folders as the
+main real-face fine-tuning dataset. LFW is evaluation-only and must not be used
+for training or fine-tuning. DigiFace1M may be used as a synthetic warmstart
+dataset or for generating million-scale retrieval data, but final custom model
+fine-tuning should use the real CelebA identity split.
 
 Each identity must be a directory, and each image under that directory belongs
 to that identity:
 
 ```text
-data/casia_webface/train/
-  0000001/
-    001.jpg
-    002.jpg
-  0000002/
-    001.jpg
+datasets/celeba_faces/train/
+  1/
+    000023.jpg
+    ...
+  10/
+    002307.jpg
+    ...
 ```
 
 The real-face pytest file reads `data.train_dir` from `training/config.yaml`, so
@@ -81,7 +88,8 @@ Default config:
 
 ## Evaluate
 
-Run LFW verification after training:
+Run LFW verification after training. This is biometric quality evaluation
+only; it is separate from FAISS retrieval scalability tests:
 
 ```bash
 python training/eval_lfw.py \
@@ -93,6 +101,10 @@ python training/eval_lfw.py \
 
 The script reports accuracy, AUC, threshold, and TAR at selected FAR values.
 It also writes `training/outputs/lfw_results.json`.
+
+The reported FAR, FRR, EER, TAR@FAR, and threshold values must come from this
+or another labeled verification protocol. They must not be inferred from FAISS
+retrieval benchmarks.
 
 ## Export
 
@@ -117,6 +129,15 @@ python scripts/benchmark_retrieval.py --source-index backend/data/index/custom.f
 
 This compares Flat, HNSW, and IVF-PQ with recall, latency, memory, and build
 time metrics.
+
+Million-scale retrieval tests are a separate concern from biometric quality:
+
+- biometric quality: LFW-style FAR/FRR/EER on labeled pairs;
+- retrieval scalability: FAISS indexes built on 1M/2M embeddings.
+
+If the custom checkpoint, preprocessing, or embedding model changes, all custom
+database embeddings and custom FAISS indexes must be rebuilt because the
+embedding space is no longer compatible with previous vectors.
 
 ## Notes
 

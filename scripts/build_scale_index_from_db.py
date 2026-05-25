@@ -351,6 +351,7 @@ def add_vectors_from_db(
     skipped = 0
     started = time.perf_counter()
 
+    selected_total = count_selected_embeddings(db, config)
     for rows in iter_embedding_batches(db, config):
         vectors: list[np.ndarray] = []
         ids: list[int] = []
@@ -374,6 +375,13 @@ def add_vectors_from_db(
             batch = np.ascontiguousarray(np.vstack(vectors), dtype=np.float32)
             index.add_with_ids(batch, np.asarray(ids, dtype=np.int64))
             del batch
+            elapsed = time.perf_counter() - started
+            rate = next_vector_id / elapsed if elapsed > 0 else 0.0
+            print(
+                f"add progress vectors={next_vector_id}/{selected_total} "
+                f"rate={rate:.1f}/s elapsed_s={elapsed:.1f}",
+                flush=True,
+            )
         del vectors
         gc.collect()
 

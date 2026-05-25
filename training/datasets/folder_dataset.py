@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from PIL import Image
 from torch.utils.data import Dataset
-
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
 

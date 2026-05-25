@@ -3,8 +3,10 @@ device: "cuda"
 amp: true
 
 data:
-  train_dir: "data/casia_webface/train"
-  val_dir: "data/casia_webface/val"
+  # Main real-face fine-tuning dataset for the custom IR-50 branch.
+  # LFW must remain evaluation-only and must not be used for training.
+  train_dir: "datasets/celeba_faces/train"
+  val_dir: "datasets/celeba_faces/val"
   pairs_file: "data/lfw/pairs.txt"
   lfw_dir: "data/lfw_aligned"
   num_workers: 4
