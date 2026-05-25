@@ -83,8 +83,13 @@ Datasets.txt
 Obsidian_Diploma_Vault/
 reports/biometric_eval/cache/
 reports/biometric_eval/cache_candidates/
+reports/biometric_eval/best_candidate_preprocessing_sweep.md
+reports/biometric_eval/*/
+reports/biometric_eval/*.json
 reports/biometric_eval/*/pairs_scores.csv
 reports/biometric_eval/*/threshold_curve.csv
+reports/runtime_identification_eval/
+reports/model_candidates/*_raw.csv
 reports/**/cache/
 reports/**/pairs_scores.csv
 reports/**/threshold_curve.csv
